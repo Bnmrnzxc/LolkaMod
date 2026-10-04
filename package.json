@@ -1,8 +1,8 @@
 {
   "name": "lolkamod",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Desktop plugin framework prototype for Lolka",
+  "description": "Desktop mod with native stream quality controls for Lolka",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -19,5 +19,8 @@
     "@types/node": "22.15.30",
     "esbuild": "0.25.5",
     "typescript": "5.8.3"
+  },
+  "dependencies": {
+    "acorn": "8.18.0"
   }
 }

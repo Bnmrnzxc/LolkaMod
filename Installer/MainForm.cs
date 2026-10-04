@@ -133,7 +133,7 @@ namespace LolkaModInstaller
             instructions.Dock = DockStyle.Fill;
             instructions.TextAlign = ContentAlignment.MiddleLeft;
             instructions.ForeColor = Color.FromArgb(205, 201, 218);
-            instructions.Text = "Перед установкой закройте Lolka. Клиент должен быть установлен заранее.\r\nПроверка реального стрима 1440p ещё не проводилась.";
+            instructions.Text = "Закройте Lolka и нажмите «Установить / обновить». После обновления клиента повторите установку.\r\nСовместимость интерфейса проверяется при запуске Lolka.";
 
             TableLayoutPanel pathGroup = new TableLayoutPanel();
             pathGroup.Dock = DockStyle.Fill;

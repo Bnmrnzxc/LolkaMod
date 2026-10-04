@@ -6,10 +6,13 @@ if (Get-CimInstance Win32_Process -Filter "Name = 'Lolka.exe'" | Where-Object Ex
 $resources = Join-Path $installationRoot 'resources'
 $original = Join-Path $resources '_app.asar'
 $archive = Join-Path $resources 'app.asar'
-$expected = 'fd94ecec264d7d7a56a0b5d1bb5ac1e416b6c9a4ee2d171b3704b0b72f0260a8'
-if ((Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Original backup integrity mismatch' }
 $manifestPath = Join-Path $resources 'lolkamod\install.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$expected = $manifest.originalHash
+if ($expected -notmatch '^[a-f0-9]{64}$' -or $manifest.shimHash -notmatch '^[a-f0-9]{64}$') { throw 'Invalid installation manifest' }
+if (Test-Path -LiteralPath (Join-Path $resources '.lolkamod-transaction.json')) { throw 'Interrupted transaction: use the installer to recover it first.' }
+foreach ($checkedPath in @($original, $archive, $manifestPath)) { if ((Get-Item -LiteralPath $checkedPath).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked restore paths are unsupported.' } }
+if ((Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Original backup integrity mismatch' }
 $current = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($current -ne $manifest.shimHash -and $current -ne $expected) { throw 'Current archive changed. Refusing to restore an old backup over another version.' }
 $stagedArchive = Join-Path $resources ('.lolkamod-restore-' + [Guid]::NewGuid().ToString() + '.tmp')

@@ -1,5 +1,5 @@
 import type { StreamProfile } from "./streams";
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 export const MAX_CSS_LENGTH = 128 * 1024;
 export interface Settings { enabled: boolean; customCss: string; qualityEnabled: boolean; profile: StreamProfile }
 export const DEFAULT_SETTINGS: Settings = { enabled: false, customCss: "", qualityEnabled: false,

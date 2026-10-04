@@ -28,12 +28,12 @@ async function zip(dir,file) {
 try {
   const windows = path.join(stage,'Windows');
   const source = path.join(stage,'LolkaMod');
-  for(const file of ['README.md','LICENSE','docs/stream-test.md',`release/LolkaModInstaller-${pkg.version}.exe`,`release/LolkaModInstaller-${pkg.version}.sha256`]) {
+  for(const file of ['README.md','LICENSE','THIRD_PARTY_NOTICES.md','docs/stream-test.md',`release/LolkaModInstaller-${pkg.version}.exe`,`release/LolkaModInstaller-${pkg.version}.sha256`]) {
     const relative=file.startsWith('release/')?path.basename(file):file;
     await copy(file,path.join(windows,relative));
   }
   // Explicit public allowlist excludes research, profiles, vendor code, local paths and agent instructions.
-  for(const file of ['src','Installer','tests','scripts','.github','.gitignore','.gitattributes','README.md','LICENSE','docs','package.json','package-lock.json','tsconfig.json']) {
+  for(const file of ['src','Installer','tests','scripts','.github','.gitignore','.gitattributes','README.md','LICENSE','THIRD_PARTY_NOTICES.md','docs','package.json','package-lock.json','tsconfig.json']) {
     if(file==='scripts') {
       await fs.mkdir(path.join(source,file),{recursive:true});
       for(const name of ['build.mjs','build-installer.mjs','package-release.mjs','fetch-frontend.mjs','install.mjs','restore-desktop.ps1']) await copy(`scripts/${name}`,path.join(source,file,name));

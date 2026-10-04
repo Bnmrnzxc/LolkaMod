@@ -89,7 +89,7 @@ test('unsupported entry continues the original response exactly once', async () 
   assert.equal(commandCalls(debuggerApi, 'Fetch.fulfillRequest').length, 0);
   assert.equal(commandCalls(debuggerApi, 'Fetch.continueRequest').length, 1);
   assert.equal(commandCalls(debuggerApi, 'Fetch.continueRequest')[0].params.requestId, 'unknown-1');
-  assert.ok(reports.some(result => result.status === 'unsupported-hash'));
+  assert.ok(reports.some(result => result.status === 'unsupported-structure'));
 });
 
 test('response body read failure fails open and continues the request', async () => {

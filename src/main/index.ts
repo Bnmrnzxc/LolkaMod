@@ -9,6 +9,11 @@ const resources = process.resourcesPath;
 const modDir = path.join(resources, "lolkamod");
 const original = path.join(resources, "_app.asar");
 const config = JSON.parse(fs.readFileSync(path.join(modDir, "config.json"), "utf8"));
+const hostMain = config.hostMain ?? "dist-js/main.js";
+const hostPreloadPath = config.hostPreload ?? "dist-js/preload.js";
+if (hostMain !== "dist-js/main.js" || hostPreloadPath !== "dist-js/preload.js") throw new Error("Unsupported desktop entry layout");
+const hostPackage = JSON.parse(fs.readFileSync(path.join(original, "package.json"), "utf8"));
+app.getVersion = () => hostPackage.version;
 const testMode = config.testMode === true;
 const disabled = process.argv.includes("--lolkamod-disable") || config.baseline === true;
 if (testMode) {
@@ -22,7 +27,7 @@ if (testMode) {
 }
 app.setAppPath(original);
 const metadata: Record<string, unknown> = { version: VERSION, testMode, disabled,
-  electron: process.versions.electron, updaterPaused: true, windows: [], settingsReads: 0, settingsWrites: 0 };
+  electron: process.versions.electron, hostVersion: hostPackage.version, updaterPaused: true, windows: [], settingsReads: 0, settingsWrites: 0 };
 const adapterReports = new Map<number, Record<string, unknown>>();
 function evidence() {
   if (!testMode) return;
@@ -87,7 +92,7 @@ const OriginalBrowserWindow = electron.BrowserWindow;
 class ModBrowserWindow extends OriginalBrowserWindow {
   constructor(options: any = {}) {
     const prefs = options.webPreferences ?? {};
-    const hostPreload = prefs.preload && path.normalize(prefs.preload) === path.normalize(path.join(original, "dist-js", "preload.js"));
+    const hostPreload = prefs.preload && path.normalize(prefs.preload) === path.normalize(path.join(original, hostPreloadPath));
     const next = { ...options, ...(testMode ? { show: false } : {}),
       webPreferences: { ...prefs, ...(!disabled && hostPreload ? { preload: path.join(modDir, "preload.js") } : {}) } };
     super(next);
@@ -97,6 +102,12 @@ class ModBrowserWindow extends OriginalBrowserWindow {
       const adapterReady = enableSourceAdapter(this.webContents, result => {
         adapterReports.set(webContentsId, { ...adapterReports.get(webContentsId), ...result });
         metadata.sourceAdapters = Object.fromEntries(adapterReports); evidence();
+        // Only compatibility metadata is persisted, never response bodies or account data.
+        try {
+          const reportFile = path.join(modDir, "compatibility.json"), temp = reportFile + ".tmp";
+          fs.writeFileSync(temp, JSON.stringify({ ...adapterReports.get(webContentsId), hostVersion: hostPackage.version, modVersion: VERSION }, null, 2));
+          fs.renameSync(temp, reportFile);
+        } catch { /* Read-only resources must not prevent the original app from loading. */ }
       });
       const originalLoadURL = this.loadURL.bind(this);
       this.loadURL = async (...args: unknown[]) => { await adapterReady; return originalLoadURL(...args); };
@@ -125,7 +136,7 @@ const patchedElectron = new Proxy(electron, { get(target, key, receiver) {
 }});
 metadata.isolatedProfile = testMode;
 evidence();
-try { require(path.join(original, "dist-js", "main.js")); }
+try { require(path.join(original, hostMain)); }
 catch (error) {
   metadata.hostMainFailed = true; evidence();
   throw error;

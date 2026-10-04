@@ -25,7 +25,8 @@ const original = path.join(process.resourcesPath, '_app.asar');
 try {
   if (process.argv.includes('--lolkamod-disable') && !config.testMode) {
     electron.app.setAppPath(original);
-    require(path.join(original, 'dist-js', 'main.js'));
+    electron.app.getVersion = () => JSON.parse(fs.readFileSync(path.join(original, 'package.json'))).version;
+    require(path.join(original, config.hostMain || 'dist-js/main.js'));
   } else { require(path.join(modDir, 'main.cjs')); }
 } catch (error) {
   if (config.testMode) { fs.writeFileSync(path.join(modDir, 'bootstrap-error.txt'), String(error.stack)); electron.app.exit(1); }

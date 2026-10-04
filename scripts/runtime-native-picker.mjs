@@ -59,7 +59,7 @@ try {
   assert.deepEqual(reopened,['VP9','1440p','60 FPS']);
   const evidence={status:'PASS',test:'stock-Lolka-React-picker-with-synthetic-source',coldRestart:restart,initial,trials,legacyIsolation,reopened,
     testedAt:new Date().toISOString(),limit:'Hidden isolated clone; no login, OS capture, audio, active SFU session or friend viewing.'};
-  await fs.writeFile(`.runtime/evidence/native-picker${restart?'-restart':''}-0.3.0.json`,JSON.stringify(evidence,null,2));
+  await fs.writeFile(`.runtime/evidence/native-picker${restart?'-restart':''}-0.4.0.json`,JSON.stringify(evidence,null,2));
   console.log(JSON.stringify({status:evidence.status,coldRestart:restart,nativeSelections:trials.map(t=>[t.resolution,t.fps]),reopened}));
 } finally {
   try {await cdp.evaluate(`(()=>{window.__lmNativePicker?.dispose();document.getElementById('lm-native-picker-test')?.remove();delete window.__lmNativePicker})()`);} finally{cdp.close();}

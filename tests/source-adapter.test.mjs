@@ -11,7 +11,7 @@ test('unknown ESM entry returns its original bytes without a patch', () => {
   const body = 'const eo = {}; // unknown version\n';
   const result = transformEntry(body);
   assert.equal(result.changed, false);
-  assert.equal(result.status, 'unsupported-hash');
+  assert.equal(result.status, 'unsupported-structure');
   assert.equal(result.body, body);
 });
 test('appended source adapter reference parses without the private vendor fixture', async () => {
@@ -27,9 +27,9 @@ test('pinned ESM transform commits all native-quality patches and parses in its 
   assert.equal(result.hash, ENTRY_HASH);
   assert.deepEqual(result.patches, nativeQualityPatches.map(p=>p.id));
   assert.equal(result.body.endsWith(sourceAdapterReference), true);
-  assert.equal(result.body.includes('eo.getState().screenShareBitrate'), true);
+  assert.equal(result.compatibility, 'known');
   await transform(result.body, { loader: 'js', format: 'esm' });
-  // Mutating one byte invalidates the patch; reapplying to already patched code also refuses.
-  assert.equal(transformEntry(original + ' ').changed, false);
+  // Unrelated updates remain compatible; an already patched entry cannot be patched twice.
+  assert.equal(transformEntry(original + ' ').changed, true);
   assert.equal(transformEntry(result.body).changed, false);
 });
