@@ -53,13 +53,16 @@ async function sourceHook(source, { native = true, desktop = true } = {}) {
   if (!contract) {
     const transformed = transformHostFeatures(source, 'test-hook-hash');
     assert.equal(transformed.features.controls, 'available');
-    const names = ['Xe', 's2e', 'cn', 'v', '$ae', 'pgt', 'Y2e', 'Sxe', 'bxe', 'Iyt', '_e', 'dgt', '_2', 'Ryt', 'fB', 'RG', 'PE'];
+    const names = ['Xe', 's2e', 'Ht', 'cn', 'v', '$ae', 'pgt', 'Y2e', 'Sxe', 'bxe', 'Iyt', '_e', 'dgt', '_2', 'Ryt', 'fB', 'RG', 'PE'];
     const match = optionalContracts(source, hostContractSpecs.controls, names);
     assert.ok(match, 'all helper aliases are consistently rebound across the same controls contracts');
     contract = { script: new vm.Script(`(${findArrowReturningChangeSource(transformed.body)})`), binding: match.binding };
     hookContracts.set(source, contract);
   }
   const binding = contract.binding;
+  let rendering=true;
+  const voiceState={isScreenSharing:true};
+  const inRender=fn=>(...args)=>{assert.equal(rendering,true,'React hook called from an event/async callback');return fn(...args);};
   const events = [], media = [], modals = [], sources = [{ id: 'window:synthetic', name: 'Synthetic source' }];
   let releaseStop, rejectStop;
   const stop = kind => {
@@ -72,11 +75,12 @@ async function sourceHook(source, { native = true, desktop = true } = {}) {
   const scope = { console, window: { ...(desktop ? { electronAPI: {} } : {}),
     addEventListener() {}, removeEventListener() {} } };
   const put = (name, value) => { assert.ok(binding[name], `binding ${name} exists`); scope[binding[name]] = value; };
-  put('Xe', () => ({ t: value => value }));
-  put('s2e', () => true);
-  put('cn', () => ({ openModal: (type, props) => { events.push('picker'); modals.push({ type, props }); },
-    closeModal: type => events.push(`close:${type}`) }));
-  put('v', { useCallback: fn => fn, useEffect: () => {} });
+  put('Xe', inRender(() => ({ t: value => value })));
+  put('s2e', inRender(() => voiceState.isScreenSharing));
+  put('Ht', {getState:()=>voiceState});
+  put('cn', inRender(() => ({ openModal: (type, props) => { events.push('picker'); modals.push({ type, props }); },
+    closeModal: type => events.push(`close:${type}`) })));
+  put('v', { useCallback: inRender(fn => fn), useEffect: inRender(() => {}) });
   put('$ae', () => native);
   put('_e', { ElectronSourcePicker: 'picker', Alert: 'alert' });
   put('pgt', async value => { events.push('start:native'); media.push(value); });
@@ -89,7 +93,8 @@ async function sourceHook(source, { native = true, desktop = true } = {}) {
   put('fB', () => native); put('RG', () => stop('native'));
   put('PE', channel => { events.push(`channel:${channel}`); return stop('legacy'); });
   const hook = contract.script.runInNewContext(scope)();
-  return { hook, events, media, modals, sources,
+  rendering=false;
+  return { hook, events, media, modals, sources, voiceState,
     release: value => { assert.ok(releaseStop); releaseStop(value); },
     fail: error => { assert.ok(rejectStop); rejectStop(error); } };
 }
@@ -97,13 +102,13 @@ async function sourceHook(source, { native = true, desktop = true } = {}) {
 test('unknown valid renderer preserves original bytes and leaves optional groups unavailable', () => {
   const source = 'export const label = "public source";\r\n';
   const result = transformHostFeatures(source, 'public-hash');
-  assert.deepEqual(result.features, { settings: 'unsupported', controls: 'unsupported' });
+  assert.deepEqual(result.features, { settings: 'unsupported', controls: 'unsupported', streamTools: 'unsupported' });
   assert.equal(result.changed, false); assert.equal(result.body, source);
 });
 
 privateTest('pinned host settings and stream controls are independently available with valid generated ESM', async () => {
   const result = await baseResult();
-  assert.deepEqual(result.features, { settings: 'available', controls: 'available' });
+  assert.deepEqual(result.features, { settings: 'available', controls: 'available', streamTools: 'available' });
   assert.equal(result.changed, true); syntax(result.body);
   assert.ok(result.body.includes('modules.register("HostSettings"'));
   assert.ok(result.body.includes('modules.register("StreamControls"'));
@@ -116,7 +121,7 @@ privateTest('renamed lexical bindings, whitespace and comments preserve both opt
   assert.notEqual(renamed, await fixture());
   for (const source of [renamed, `${await fixture()}\n/* unrelated feature release */\n`]) {
     const result = transformHostFeatures(source, 'renamed-hash');
-    assert.deepEqual(result.features, { settings: 'available', controls: 'available' }); syntax(result.body);
+    assert.deepEqual(result.features, { settings: 'available', controls: 'available', streamTools: 'available' }); syntax(result.body);
     assert.ok(result.body.includes('data-lolkamod-host-settings')); assert.ok(result.body.includes('data-lolkamod-host-toolbar'));
   }
 });
@@ -127,7 +132,7 @@ privateTest('missing and duplicate settings anchors fail only their optional set
   for (const source of [original.replace(spec.find, spec.find.replace('groups.app', 'groups.changed')),
     `${original}\nconst duplicateSettingsGroup=${spec.find};\n`]) {
     const result = transformHostFeatures(source, 'settings-mismatch');
-    assert.deepEqual(result.features, { settings: 'unsupported', controls: 'available' }); syntax(result.body);
+    assert.deepEqual(result.features, { settings: 'unsupported', controls: 'available', streamTools: 'available' }); syntax(result.body);
     assert.equal(result.body.includes('modules.register("HostSettings"'), false);
     assert.equal(result.body.includes('modules.register("StreamControls"'), true);
     assert.equal(result.body.includes('function __lmHostSettings('), false);
@@ -141,7 +146,7 @@ privateTest('changed or duplicate control contracts fail only their optional con
   for (const source of [original.replace(signature, signature.replace('handleScreenShare:c', 'handleScreenShareChanged:c')),
     `${original}\nconst duplicateControls=()=>{let aie;${duplicate};};\n`]) {
     const result = transformHostFeatures(source, 'controls-mismatch');
-    assert.deepEqual(result.features, { settings: 'available', controls: 'unsupported' }); syntax(result.body);
+    assert.deepEqual(result.features, { settings: 'available', controls: 'unsupported', streamTools: 'available' }); syntax(result.body);
     assert.equal(result.body.includes('modules.register("HostSettings"'), true);
     assert.equal(result.body.includes('modules.register("StreamControls"'), false);
     assert.equal(result.body.includes('function __lmHostToolbar('), false);
@@ -202,6 +207,16 @@ privateTest('legacy selection awaits stop and retains stock positional parameter
   }
 });
 
+privateTest('source selection uses imperative latest state after stream ended while picker was open', async () => {
+  for(const source of [await fixture(),await renamedFixture()]){
+    const {hook,events,media,modals,voiceState}=await sourceHook(source,{native:false});
+    await hook.changeSource(88);voiceState.isScreenSharing=false;
+    await modals[0].props.onSourceSelect('window:replacement',true,'1080p',30,'vp9');
+    assert.equal(events.some(event=>event.startsWith('stop:')),false);
+    assert.equal(media.length,1);
+  }
+});
+
 privateTest('source change refuses a non-desktop host before opening picker or stopping existing streams', async () => {
   const { hook, events, media, modals } = await sourceHook(await fixture(), { desktop: false });
   assert.equal(hook.isElectron, false);
@@ -229,5 +244,14 @@ privateTest('native stop rejection or legacy stop failure alerts without startin
     await selecting;
     assert.equal(media.length, 0); assert.equal(events.some(value => value.startsWith('start:')), false);
     assert.equal(modals.at(-1).type, 'alert'); assert.equal(typeof modals.at(-1).props.message, 'string');
+  }
+});
+
+privateTest('missing and duplicate selected-stream anchors fail only the stream tools group', async () => {
+  const original=await fixture(), spec=hostContractSpecs.streamTools[0];
+  for(const source of [original.replace(spec.find,spec.find.replace('screenShare.live','screenShare.changed')), original+'\nconst extra=()=>'+spec.find+';' ]) {
+    const result=transformHostFeatures(source,'tools-mismatch');
+    assert.equal(result.features.settings,'available');assert.equal(result.features.controls,'available');
+    assert.equal(result.features.streamTools,'unsupported');assert.equal(result.body.includes('function __lmHostStreamTools('),false);
   }
 });

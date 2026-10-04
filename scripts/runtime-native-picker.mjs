@@ -39,6 +39,7 @@ try {
     const result=await cdp.evaluate(`({selection:window.__lmNativePicker.selection,stored:window.LolkaMod.modules.get('ScreenShareSettings').snapshot(),profile:window.LolkaMod.modules.get('ScreenShareSettings').test.profile()})`);
     assert.equal(result.selection[2],resolution);assert.equal(result.selection[3],Number(fps.split(' ')[0]));
     assert.equal(result.stored.resolution,resolution);assert.equal(result.stored.fps,String(result.selection[3]));
+    assert.equal(result.selection[4],initial.profile.codec,'resolution/FPS choices retain the selected codec');
     trials.push({resolution,fps,options,result});
   }
   // A 0.2 profile must never rewrite native keys or enforce capture parameters.
@@ -56,10 +57,10 @@ try {
   })()`);
   await pause();
   const reopened=await cdp.evaluate(`[...document.getElementById('lm-native-picker-test').querySelectorAll('[role=combobox]')].map(o=>o.textContent)`);
-  assert.deepEqual(reopened,['VP9','1440p','60 FPS']);
+  assert.deepEqual(reopened,[initial.profile.codec.toUpperCase(),'1440p','60 FPS']);
   const evidence={status:'PASS',test:'stock-Lolka-React-picker-with-synthetic-source',coldRestart:restart,initial,trials,legacyIsolation,reopened,
     testedAt:new Date().toISOString(),limit:'Hidden isolated clone; no login, OS capture, audio, active SFU session or friend viewing.'};
-  await fs.writeFile(`.runtime/evidence/native-picker${restart?'-restart':''}-0.4.0.json`,JSON.stringify(evidence,null,2));
+  await fs.writeFile(`.runtime/evidence/native-picker${restart?'-restart':''}-${initial.version}.json`,JSON.stringify(evidence,null,2));
   console.log(JSON.stringify({status:evidence.status,coldRestart:restart,nativeSelections:trials.map(t=>[t.resolution,t.fps]),reopened}));
 } finally {
   try {await cdp.evaluate(`(()=>{window.__lmNativePicker?.dispose();document.getElementById('lm-native-picker-test')?.remove();delete window.__lmNativePicker})()`);} finally{cdp.close();}

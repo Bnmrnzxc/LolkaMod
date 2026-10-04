@@ -10,8 +10,8 @@ async function sourceModule(name) {
     format: 'esm', platform: 'node', target: 'es2022', write: false, logLevel: 'silent' });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
-const [themes, indicators, miniPlayers] = await Promise.all([
-  sourceModule('theme-manager'), sourceModule('stream-indicator'), sourceModule('mini-player'),
+const [themes, indicators] = await Promise.all([
+  sourceModule('theme-manager'), sourceModule('stream-indicator'),
 ]);
 
 class Events {
@@ -20,17 +20,21 @@ class Events {
     const listeners = this.listeners.get(type) ?? new Set(); listeners.add(fn); this.listeners.set(type, listeners);
   }
   removeEventListener(type, fn) { this.listeners.get(type)?.delete(fn); }
-  dispatch(type) { for (const listener of [...(this.listeners.get(type) ?? [])]) listener({ type, target: this }); }
+  dispatch(type, extra = {}) { for (const listener of [...(this.listeners.get(type) ?? [])]) listener({ type, target: this,
+    preventDefault() {}, stopPropagation() {}, ...extra }); }
   listenerCount() { return [...this.listeners.values()].reduce((count, values) => count + values.size, 0); }
 }
 class Element extends Events {
   parent = null; children = []; attributes = new Map(); dataset = {}; textContent = ''; hidden = false;
   className = ''; value = ''; id = '';
+  style = {}; bounds = { left: 400, top: 300, right: 418, bottom: 318, width: 18, height: 18 };
   constructor(tag, doc) { super(); this.tagName = tag.toUpperCase(); this.ownerDocument = doc; }
   get isConnected() { return this === this.ownerDocument.documentElement || !!this.parent?.isConnected; }
   setAttribute(key, value) { this.attributes.set(key, value); }
   getAttribute(key) { return this.attributes.get(key) ?? null; }
   removeAttribute(key) { this.attributes.delete(key); }
+  getBoundingClientRect() { return this.className === 'tooltip'
+    ? { left: 0, top: 0, right: 280, bottom: 200, width: 280, height: 200 } : this.bounds; }
   append(...items) { for (const item of items) { item.remove(); item.parent = this; this.children.push(item); } }
   remove() {
     if (this.parent) this.parent.children = this.parent.children.filter(item => item !== this);
@@ -40,55 +44,21 @@ class Element extends Events {
   attachShadow() { const shadow = new Element('shadow', this.ownerDocument); shadow.parent = this; this.shadowRoot = shadow; return shadow; }
 }
 class Document extends Events {
-  pictureInPictureEnabled = true; pictureInPictureElement = null; exitCalls = 0;
-  observers = new Set();
   constructor() {
     super();
     this.documentElement = new Element('html', this);
     this.head = new Element('head', this); this.body = new Element('body', this);
     this.documentElement.append(this.head, this.body);
-    const owner = this;
     this.defaultView = new Events();
-    this.defaultView.MutationObserver = class {
-      constructor(callback) { this.callback = callback; }
-      observe() { owner.observers.add(this); }
-      disconnect() { owner.observers.delete(this); }
-    };
+    this.defaultView.innerWidth = 1280; this.defaultView.innerHeight = 720;
   }
   createElement(tag) { return new Element(tag, this); }
-  mutate() { for (const observer of [...this.observers]) observer.callback([]); }
-  async exitPictureInPicture() {
-    this.exitCalls++; const video = this.pictureInPictureElement;
-    this.pictureInPictureElement = null; video?.dispatch('leavepictureinpicture');
-  }
+  createElementNS(_namespace, tag) { return new Element(tag, this); }
 }
-class Track extends Events {
-  readyState = 'live'; stopCalls = 0;
-  stop() { this.stopCalls++; this.readyState = 'ended'; }
-  end() { this.readyState = 'ended'; this.dispatch('ended'); }
-}
-class Video extends Element {
-  readyState = 4; videoWidth = 1280; videoHeight = 720; ended = false; disablePictureInPicture = false;
-  volume = 0.37; muted = false; currentTime = 11; pauseCalls = 0; playCalls = 0; requestCalls = 0;
-  constructor(doc) {
-    super('video', doc); this.track = new Track(); this.srcObject = { getVideoTracks: () => [this.track] }; doc.body.append(this);
-  }
-  requestPictureInPicture() {
-    this.requestCalls++;
-    const prior = this.ownerDocument.pictureInPictureElement;
-    this.ownerDocument.pictureInPictureElement = this;
-    if (prior && prior !== this) prior.dispatch('leavepictureinpicture');
-    return Promise.resolve({ width: 320, height: 180 });
-  }
-  play() { this.playCalls++; }
-  pause() { this.pauseCalls++; }
-}
-const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 const owned = (doc, id) => [...doc.head.children, ...doc.body.children].filter(element => element.id === id);
-const videoUnchanged = video => {
-  assert.equal(video.volume, 0.37); assert.equal(video.muted, false); assert.equal(video.currentTime, 11);
-  assert.equal(video.pauseCalls, 0); assert.equal(video.playCalls, 0); assert.equal(video.track.stopCalls, 0);
-};
+const anchor = doc => { const element = doc.createElement('span'); element.className = 'host-stream-heading'; doc.body.append(element); return element; };
+const icon = container => container.children.find(element => element.getAttribute('data-lolkamod-owned') === 'stream-indicator');
+const popup = doc => doc.body.children.find(element => element.getAttribute('data-lolkamod-owned') === 'stream-tooltip');
 
 function snapshot(overrides = {}) {
   return {
@@ -165,26 +135,34 @@ test('indicator distinguishes capture settings, actual encoded metrics and inbou
 
 test('indicator no-stream, stale data, missing metrics and lifecycle are truthful without getStats', () => {
   const doc = new Document(); let time = 1000;
+  const container = anchor(doc);
   const controller = indicators.createStreamIndicator({ document: doc, enabled: false, now: () => time });
-  assert.equal(owned(doc, 'lolkamod-stream-indicator').length, 0);
+  assert.equal(icon(container), undefined); assert.equal(popup(doc), undefined);
+  const dispose = controller.attach(container, { ownScreen: true });
+  const element = icon(container), button = element.shadowRoot.children[1];
+  assert.equal(element.hidden, true); assert.equal(popup(doc), undefined);
   controller.update(snapshot()); controller.setEnabled(true);
-  assert.equal(owned(doc, 'lolkamod-stream-indicator').length, 1);
-  const element = owned(doc, 'lolkamod-stream-indicator')[0];
-  const card = element.shadowRoot.children[1];
+  assert.equal(element.hidden, false); assert.equal(container.children.length, 1);
+  assert.equal(popup(doc), undefined, 'no floating card exists until hovering the compact icon');
+  button.dispatch('mouseenter');
+  assert.ok(popup(doc));
   time = 10_000; controller.update(snapshot());
-  assert.equal(controller.model().status, 'stale'); assert.equal(card.children[2].textContent, 'Ожидание свежих данных');
+  assert.equal(controller.model(container).status, 'stale');
+  assert.equal(popup(doc).shadowRoot.children[1].children[1].textContent, 'Ожидание свежих данных');
   const missing = { ...snapshot().streams[0], encoded: null, codec: 'secret injection\n', bitrateKbps: NaN };
   controller.update(snapshot({ sampledAt: time, streams: [missing] }));
   assert.match(controller.model().cards[0].summary, /^Нет данных · Нет данных · Нет данных · Нет данных$/);
   controller.update(snapshot({ streams: [], state: { connections: 0, displayCapture: 0, samples: 3, noStream: true } }));
-  assert.equal(controller.model().status, 'idle'); assert.equal(card.hidden, true);
+  assert.equal(controller.model(container).status, 'idle'); assert.equal(element.hidden, true); assert.equal(popup(doc), undefined);
   controller.update(snapshot({ streams: [], state: { connections: 0, displayCapture: 1, samples: 0, noStream: true } }));
-  assert.equal(controller.model().status, 'waiting'); assert.equal(card.hidden, false);
-  assert.equal(card.children[2].textContent, 'Ожидание показателей видео');
-  const select = card.children[0]; assert.equal(select.listenerCount(), 1);
-  controller.setEnabled(false); assert.equal(element.isConnected, false);
-  controller.stop(); controller.stop(); assert.equal(select.listenerCount(), 0);
-  controller.setEnabled(true); assert.equal(owned(doc, 'lolkamod-stream-indicator').length, 0);
+  assert.equal(controller.model(container).status, 'waiting'); assert.equal(element.hidden, false);
+  button.dispatch('mouseenter');
+  assert.equal(popup(doc).shadowRoot.children[1].children[1].textContent, 'Ожидание показателей видео');
+  assert.equal(button.listenerCount(), 6);
+  controller.setEnabled(false); assert.equal(element.hidden, true); assert.equal(popup(doc), undefined);
+  dispose(); controller.stop(); controller.stop(); assert.equal(button.listenerCount(), 0);
+  controller.setEnabled(true); assert.equal(container.children.length, 0); assert.equal(popup(doc), undefined);
+  assert.equal(doc.listenerCount(), 0); assert.equal(doc.defaultView.listenerCount(), 0);
 });
 
 test('indicator selection follows opaque local stream IDs across RTP reordering and removes vanished streams', () => {
@@ -202,99 +180,122 @@ test('indicator selection follows opaque local stream IDs across RTP reordering 
 
 test('an active native stream without browser RTP shows unavailable metrics instead of claiming no stream', () => {
   const doc = new Document(); const controller = indicators.createStreamIndicator({ document: doc, now: () => 1000 });
+  const container = anchor(doc); controller.attach(container, { ownScreen: true });
   controller.update(snapshot({ nativeActive: true, streams: [],
     state: { connections: 0, displayCapture: 0, samples: 3, noStream: true },
     requestedResolution: '1440p', requestedFps: 60 }));
-  const model = controller.model();
+  const model = controller.model(container);
   assert.equal(model.status, 'unavailable'); assert.equal(model.message, 'Стрим активен; фактические метрики недоступны');
   assert.deepEqual(model.cards, []);
-  const element = owned(doc, 'lolkamod-stream-indicator')[0], card = element.shadowRoot.children[1];
-  assert.equal(card.hidden, false); assert.equal(card.children[2].textContent, model.message);
+  const element = icon(container), button = element.shadowRoot.children[1];
+  assert.equal(element.hidden, false); assert.equal(popup(doc), undefined);
+  button.dispatch('focus');
+  assert.equal(popup(doc).shadowRoot.children[1].children[1].textContent, model.message);
   assert.equal(JSON.stringify(model).includes('1440'), false); assert.equal(JSON.stringify(model).includes('60 FPS'), false);
   controller.stop();
 });
 
-test('native PiP opens the explicitly chosen video synchronously and preserves existing media', async () => {
-  const doc = new Document(); const first = new Video(doc); const second = new Video(doc);
-  const controller = miniPlayers.createMiniPlayer({ document: doc });
-  assert.equal(controller.capability().reason, 'video-required');
-  const opening = controller.open(second);
-  assert.equal(second.requestCalls, 1, 'request must precede first await and keep user activation');
-  assert.equal(first.requestCalls, 0); assert.equal((await opening).ok, true);
-  assert.equal(controller.state().status, 'open'); assert.strictEqual(doc.pictureInPictureElement, second);
-  assert.equal(second.listenerCount(), 3); assert.equal(second.track.listenerCount(), 1); assert.equal(doc.observers.size, 1);
-  assert.equal((await controller.open(second)).ok, true); assert.equal(second.requestCalls, 1);
-  assert.equal((await controller.open(first)).ok, true); assert.strictEqual(doc.pictureInPictureElement, first);
-  assert.equal(second.listenerCount(), 0); assert.equal(second.track.listenerCount(), 0); assert.equal(doc.observers.size, 1);
-  await controller.close();
-  assert.equal(doc.pictureInPictureElement, null); assert.equal(doc.exitCalls, 1);
-  assert.equal(first.listenerCount(), 0); assert.equal(doc.observers.size, 0);
-  videoUnchanged(first); videoUnchanged(second);
-  controller.stop(); assert.equal(doc.defaultView.listenerCount(), 0);
+test('compact icon exposes actual metrics on hover and keyboard focus, with one temporary body tooltip', () => {
+  const doc = new Document(); const controller = indicators.createStreamIndicator({ document: doc, now: () => 1000 });
+  const container = anchor(doc); controller.attach(container, { ownScreen: true }); controller.update(snapshot());
+  const element = icon(container), button = element.shadowRoot.children[1];
+  assert.equal(container.children.length, 1); assert.equal(button.tagName, 'BUTTON');
+  assert.match(element.shadowRoot.children[0].textContent, /width:18px;height:18px/);
+  assert.doesNotMatch(element.shadowRoot.children[0].textContent, /position:fixed/);
+  assert.equal(popup(doc), undefined);
+  button.dispatch('mouseenter');
+  const portal = popup(doc), tooltip = portal.shadowRoot.children[1];
+  assert.equal(tooltip.getAttribute('role'), 'tooltip'); assert.equal(tooltip.children[0].textContent, 'Мой стрим');
+  assert.equal(button.getAttribute('aria-expanded'), 'true');
+  const text = tooltip.children[2].children.map(child => child.textContent).join('|');
+  assert.match(text, /1920 × 1080/); assert.match(text, /29\.8 FPS/); assert.match(text, /1\.80 Мбит\/с/); assert.match(text, /AV1/);
+  assert.doesNotMatch(text, /60 FPS|FPS в настройках захвата/);
+  assert.equal(button.dataset.state, 'limited');
+  assert.equal(tooltip.style.left, '138px'); assert.equal(tooltip.style.top, '92px');
+  button.dispatch('mouseleave'); assert.equal(popup(doc), undefined); assert.equal(button.getAttribute('aria-expanded'), 'false');
+  button.dispatch('focus'); assert.ok(popup(doc));
+  controller.setDetailed(true);
+  assert.ok(popup(doc).shadowRoot.children[1].children[2].children.some(child => child.textContent === 'FPS в настройках захвата'));
+  button.dispatch('keydown', { key: 'Escape' }); assert.equal(popup(doc), undefined);
+  controller.update(snapshot()); assert.equal(popup(doc), undefined, 'refresh does not reopen an Escape-dismissed tooltip');
+  button.dispatch('blur'); button.dispatch('focus'); assert.ok(popup(doc));
+  button.dispatch('blur'); assert.equal(popup(doc), undefined);
+  controller.stop();
 });
 
-test('PiP handles disabled capability and errors without leaking native error text', async () => {
-  const doc = new Document(); const video = new Video(doc); const controller = miniPlayers.createMiniPlayer({ document: doc });
-  doc.pictureInPictureEnabled = false;
-  assert.equal((await controller.open(video)).reason, 'unsupported'); assert.equal(video.requestCalls, 0);
-  doc.pictureInPictureEnabled = true; video.disablePictureInPicture = true;
-  assert.equal((await controller.open(video)).reason, 'disabled-by-host');
-  video.disablePictureInPicture = false; video.readyState = 0;
-  assert.equal(controller.capability(video).reason, 'video-unavailable'); video.readyState = 4;
-  video.requestPictureInPicture = () => Promise.reject(Object.assign(new Error('private video title'), { name: 'NotAllowedError' }));
-  assert.equal((await controller.open(video)).reason, 'user-gesture-required');
-  assert.equal(controller.state().message.includes('private'), false);
-  assert.equal(video.listenerCount(), 0); assert.equal(video.track.listenerCount(), 0); assert.equal(doc.observers.size, 0);
-  controller.stop(); videoUnchanged(video);
+test('video-specific tooltip requires proven track association and resolves it again after reconnect', () => {
+  const doc = new Document(); const controller = indicators.createStreamIndicator({ document: doc, now: () => 1000 });
+  const mapped = anchor(doc), unknown = anchor(doc); let id = '1:inbound:20';
+  controller.attach(mapped, { streamId: () => id }); controller.attach(unknown);
+  const outgoing = { ...snapshot().streams[0], streamId: '1:outbound:10' };
+  const incoming = { ...outgoing, streamId: '1:inbound:20', direction: 'inbound', media: 'unknown', capture: null,
+    encoded: null, decoded: { width: 1280, height: 720, fps: 15 } };
+  controller.update(snapshot({ streams: [outgoing, incoming] }));
+  assert.equal(controller.model(mapped).selectedId, id); assert.match(controller.model(mapped).cards[0].summary, /1280 × 720/);
+  assert.equal(controller.model(unknown).status, 'unavailable'); assert.equal(controller.model(unknown).message, 'Метрики этого видео не сопоставлены');
+  assert.deepEqual(controller.model(unknown).cards, [], 'unmapped incoming video never borrows own-stream metrics');
+  const mappedButton = icon(mapped).shadowRoot.children[1]; mappedButton.dispatch('mouseenter');
+  assert.match(popup(doc).shadowRoot.children[1].children[2].children.map(child => child.textContent).join('|'), /15 FPS/);
+  id = '2:inbound:21'; controller.update(snapshot({ streams: [{ ...incoming, connectionId: 2, streamId: id,
+    decoded: { width: 2560, height: 1440, fps: 59.5 } }] }));
+  assert.equal(controller.model(mapped).selectedId, id); assert.match(controller.model(mapped).cards[0].summary, /2560 × 1440 · 59\.5 FPS/);
+  mappedButton.dispatch('mouseleave'); id = undefined; mappedButton.dispatch('mouseenter');
+  assert.equal(controller.model(mapped).status, 'unavailable', 'hover rechecks video association between collector updates');
+  assert.equal(popup(doc).shadowRoot.children[1].children[1].textContent, 'Метрики этого видео не сопоставлены');
+  controller.update(snapshot({ streams: [outgoing, incoming] }));
+  assert.equal(controller.model(mapped).status, 'unavailable'); assert.deepEqual(controller.model(mapped).cards, []);
+  controller.stop();
 });
 
-test('PiP cleanup on native close, video removal and ended tracks preserves unrelated host PiP', async () => {
-  const doc = new Document(); const video = new Video(doc); const other = new Video(doc);
-  const controller = miniPlayers.createMiniPlayer({ document: doc });
-  await controller.open(video);
-  doc.pictureInPictureElement = null; video.dispatch('leavepictureinpicture');
-  assert.equal(controller.state().status, 'idle'); assert.equal(video.listenerCount(), 0); assert.equal(doc.observers.size, 0);
-  await controller.open(video); video.remove(); doc.mutate(); await flush();
-  assert.equal(doc.pictureInPictureElement, null); assert.equal(video.track.listenerCount(), 0); assert.equal(doc.observers.size, 0);
-  doc.body.append(video); await controller.open(video); video.track.end(); await flush();
-  assert.equal(doc.pictureInPictureElement, null); assert.equal(video.track.stopCalls, 0);
-  doc.pictureInPictureElement = other; const exits = doc.exitCalls;
-  controller.stop(); await flush(); assert.strictEqual(doc.pictureInPictureElement, other); assert.equal(doc.exitCalls, exits);
-  assert.equal(doc.defaultView.listenerCount(), 0); videoUnchanged(other);
+test('ambiguous own streams remain unmapped and only one tooltip opens across multiple stream anchors', () => {
+  const doc = new Document(); const controller = indicators.createStreamIndicator({ document: doc, now: () => 1000 });
+  const first = anchor(doc), second = anchor(doc); controller.attach(first, { ownScreen: true }); controller.attach(second);
+  const stream = snapshot().streams[0]; controller.update(snapshot({ streams: [stream, { ...stream, connectionId: 2 }] }));
+  assert.equal(controller.model(first).status, 'unavailable'); assert.deepEqual(controller.model(first).cards, []);
+  const firstButton = icon(first).shadowRoot.children[1], secondButton = icon(second).shadowRoot.children[1];
+  firstButton.dispatch('mouseenter'); const firstPortal = popup(doc);
+  secondButton.dispatch('focus'); assert.notStrictEqual(popup(doc), firstPortal); assert.equal(firstPortal.isConnected, false);
+  assert.equal(doc.body.children.filter(element => element.getAttribute('data-lolkamod-owned') === 'stream-tooltip').length, 1);
+  secondButton.bounds = { left: 2, top: 2, right: 20, bottom: 20, width: 18, height: 18 };
+  doc.defaultView.dispatch('resize');
+  const tooltip = popup(doc).shadowRoot.children[1]; assert.equal(tooltip.style.left, '8px'); assert.equal(tooltip.style.top, '28px');
+  controller.detach(second); assert.equal(popup(doc), undefined); assert.equal(second.children.length, 0);
+  assert.equal(secondButton.listenerCount(), 0); controller.stop();
 });
 
-test('a pending PiP request is cancelled on stop, with no orphan window or media mutation', async () => {
-  const doc = new Document(); const video = new Video(doc);
-  let resolve;
-  video.requestPictureInPicture = () => new Promise(done => { resolve = () => { doc.pictureInPictureElement = video; done({}); }; });
-  const controller = miniPlayers.createMiniPlayer({ document: doc });
-  const opening = controller.open(video);
-  assert.equal((await controller.open(video)).reason, 'operation-in-progress');
-  controller.stop(); resolve();
-  assert.equal((await opening).reason, 'stopped'); await flush();
-  assert.equal(doc.pictureInPictureElement, null); assert.equal(doc.exitCalls, 1);
-  assert.equal(controller.state().status, 'stopped'); assert.equal(controller.capability(video).reason, 'stopped');
-  assert.equal(video.listenerCount(), 0); assert.equal(video.track.listenerCount(), 0); assert.equal(doc.observers.size, 0);
-  assert.equal(doc.defaultView.listenerCount(), 0); videoUnchanged(video);
+test('repeated anchor attachment, disable, disposal and disconnected streams leave no tooltip or listeners', () => {
+  const doc = new Document(); const controller = indicators.createStreamIndicator({ document: doc, now: () => 1000 });
+  const container = anchor(doc); const firstDispose = controller.attach(container, { ownScreen: true });
+  const dispose = controller.attach(container, { ownScreen: true }); firstDispose();
+  assert.equal(container.children.length, 1, 'an older host-effect disposer cannot remove a replacement attachment');
+  controller.update(snapshot()); const button = icon(container).shadowRoot.children[1];
+  button.dispatch('mouseenter'); assert.ok(popup(doc));
+  container.remove(); controller.update(snapshot()); assert.equal(popup(doc), undefined);
+  doc.body.append(container); controller.setEnabled(false); assert.equal(icon(container).hidden, true);
+  controller.setEnabled(true); assert.equal(icon(container).hidden, false);
+  assert.equal(popup(doc), undefined, 'disable/disconnection clears stale hover state');
+  dispose(); assert.equal(container.children.length, 0); assert.equal(button.listenerCount(), 0);
+  assert.equal(doc.listenerCount(), 0); assert.equal(doc.defaultView.listenerCount(), 0);
+  controller.stop(); assert.equal(popup(doc), undefined);
+  assert.equal(controller.attach(container, { ownScreen: true })(), undefined); assert.equal(container.children.length, 0);
 });
 
-test('replacing a controller during a pending request preserves the replacement-owned PiP', async () => {
-  const doc = new Document(); const video = new Video(doc);
-  let resolveOld;
-  const nativeRequest = video.requestPictureInPicture.bind(video);
-  video.requestPictureInPicture = () => new Promise(done => {
-    resolveOld = () => { doc.pictureInPictureElement = video; done({}); };
-  });
-  const old = miniPlayers.createMiniPlayer({ document: doc });
-  const oldRequest = old.open(video);
-  const replacement = miniPlayers.createMiniPlayer({ document: doc });
-  assert.equal(old.state().status, 'stopped');
-  video.requestPictureInPicture = nativeRequest;
-  assert.equal((await replacement.open(video)).ok, true);
-  resolveOld(); assert.equal((await oldRequest).reason, 'stopped');
-  assert.strictEqual(doc.pictureInPictureElement, video); assert.equal(doc.exitCalls, 0);
-  assert.equal(video.listenerCount(), 3); assert.equal(doc.observers.size, 1);
-  replacement.stop(); await flush();
-  assert.equal(doc.pictureInPictureElement, null); assert.equal(doc.defaultView.listenerCount(), 0);
-  videoUnchanged(video);
+test('requested native settings are explicitly separate from unavailable measured values and active state', () => {
+  const doc = new Document(); const controller = indicators.createStreamIndicator({ document: doc, now: () => 1000 });
+  const own = anchor(doc), incoming = anchor(doc); let active = true;
+  const requested = () => ({ resolution: '1440p', fps: 60, codec: 'av1' });
+  controller.attach(own, { ownScreen: true, active: () => active, requested });
+  controller.attach(incoming, { active: () => true, requested });
+  controller.update(snapshot({ nativeActive: true, streams: [],
+    state: { connections: 0, displayCapture: 0, samples: 2, noStream: true } }));
+  const model = controller.model(own); assert.equal(model.status, 'unavailable'); assert.deepEqual(model.cards, []);
+  assert.deepEqual(model.requested, { resolution: '1440p', fps: 60, codec: 'AV1' });
+  assert.equal(controller.model(incoming).requested, undefined, 'requested own profile is never shown for another video');
+  const button = icon(own).shadowRoot.children[1]; button.dispatch('focus');
+  const text = popup(doc).shadowRoot.children[1].children[1].textContent;
+  assert.equal(text, 'Выбрано: 1440p · 60 FPS · AV1\nСтрим активен; фактические метрики недоступны');
+  assert.equal(popup(doc).shadowRoot.children[1].children[2].hidden, true, 'no requested values in the measurements table');
+  model.requested.fps = 15; assert.equal(controller.model(own).requested.fps, 60);
+  active = false; controller.update(snapshot()); assert.equal(icon(own).hidden, true); assert.equal(popup(doc), undefined);
+  controller.stop();
 });

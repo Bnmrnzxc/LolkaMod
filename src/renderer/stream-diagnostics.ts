@@ -140,6 +140,7 @@ export function installStreamDiagnostics(): {
   snapshot(): StreamDiagnosticsSnapshot;
   stop(): void;
   sample(): Promise<void>;
+  streamIdForVideo(video: HTMLVideoElement): string | undefined;
   observeDisplayTracks(callback: (track: MediaStreamTrack) => void): () => void;
   observePeerConnections(callback: (pc: RTCPeerConnection) => void): () => void;
 } {
@@ -152,6 +153,8 @@ export function installStreamDiagnostics(): {
   let nextStreamId = 1;
   const streamIds = new Map<string, string>();
   let latestStreams: StreamRecord[] = [];
+  // Raw track identities stay private; public snapshots contain only opaque IDs.
+  let trackStreams = new WeakMap<object, StreamRecord>();
   const connections = new Map<any, Connection>();
   const displayTracks = new Map<any, Capture>();
   const baselines = new Map<string, Baseline>();
@@ -331,6 +334,14 @@ export function installStreamDiagnostics(): {
     sampling = true;
     pruneDisplayTracks();
     const sampled: StreamRecord[] = [];
+    const associations = new WeakMap<object, StreamRecord>();
+    const associate = (track:any, record:StreamRecord) => {
+      if(!track||track.readyState==='ended')return;
+      const prior=associations.get(track), size=(value:StreamRecord)=>{
+        const metric=value.encoded??value.decoded;return (metric?.width??0)*(metric?.height??0);
+      };
+      if(!prior||size(record)>size(prior))associations.set(track,record);
+    };
     try {
       const currentConnections = [...connections.values()];
       for (const connection of currentConnections) {
@@ -351,20 +362,29 @@ export function installStreamDiagnostics(): {
             const codecs = new Map(values.filter(value => value?.type === 'codec').map(value => [value.id, value]));
             for (const report of values) {
               if (report?.type !== 'outbound-rtp' || !videoReport(report)) continue;
-              sampled.push(makeStream(connection, 'outbound', report, codecs, sender, track));
+              const record=makeStream(connection, 'outbound', report, codecs, sender, track);
+              sampled.push(record);associate(track,record);
             }
           } catch { /* transient sender statistics failure */ }
         }
         try {
           const values = reportValues(await pc.getStats());
           const codecs = new Map(values.filter(value => value?.type === 'codec').map(value => [value.id, value]));
+          let transceivers:any[]=[];
+          try{transceivers=pc.getTransceivers?.()??[];}catch{/* Optional read-only association. */}
           for (const report of values) {
             if (report?.type !== 'inbound-rtp' || !videoReport(report)) continue;
-            sampled.push(makeStream(connection, 'inbound', report, codecs));
+            const record=makeStream(connection, 'inbound', report, codecs);sampled.push(record);
+            const hasTrack=typeof report.trackIdentifier==='string'&&report.trackIdentifier.length>0;
+            const hasMid=typeof report.mid==='string';
+            const matches=transceivers.filter(t=>t.receiver?.track?.kind==='video'&&(hasTrack||hasMid)&&
+              (!hasTrack||report.trackIdentifier===t.receiver.track.id)&&(!hasMid||report.mid===t.mid));
+            if(matches.length===1)associate(matches[0].receiver.track,record);
           }
         } catch { /* transient connection statistics failure */ }
       }
-      latestStreams = sampled.slice(-MAX_STREAMS);
+      if(stopped)return;
+      latestStreams = sampled.slice(-MAX_STREAMS);trackStreams=associations;
       sampleCount += 1;
       sampledAt = Date.now();
     } catch { /* diagnostics must never affect host media */ }
@@ -383,6 +403,16 @@ export function installStreamDiagnostics(): {
     },
     streams: latestStreams.map(cloneStream),
   }); };
+
+  const streamIdForVideo = (video:HTMLVideoElement):string|undefined => {
+    try{
+      const tracks=(video.srcObject as MediaStream|null)?.getVideoTracks?.();
+      if(stopped||!video.isConnected||tracks?.length!==1||tracks[0].readyState==='ended')return;
+      const record=trackStreams.get(tracks[0]);
+      if(record&&latestStreams.some(s=>s.streamId===record.streamId)&&
+        [...connections.values()].some(c=>c.id===record.connectionId&&c.pc.connectionState!=='closed'))return record.streamId;
+    }catch{/* A detached or non-MediaStream video has no proven RTP association. */}
+  };
 
   const observeDisplayTracks = (callback: (track: MediaStreamTrack) => void): (() => void) => {
     if (stopped) return () => {};
@@ -424,6 +454,7 @@ export function installStreamDiagnostics(): {
     baselines.clear();
     streamIds.clear();
     latestStreams = [];
+    trackStreams=new WeakMap();
     displayObservers.clear();
     connectionObservers.clear();
 
@@ -443,5 +474,5 @@ export function installStreamDiagnostics(): {
   };
 
   activeStop = stop;
-  return { snapshot, stop, sample, observeDisplayTracks, observePeerConnections };
+  return { snapshot, stop, sample, streamIdForVideo, observeDisplayTracks, observePeerConnections };
 }

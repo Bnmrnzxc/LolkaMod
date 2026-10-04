@@ -1,12 +1,19 @@
 import type { StreamDiagnosticsSnapshot, StreamMetrics, StreamRecord } from './stream-diagnostics';
 
 export type IndicatorSnapshot = StreamDiagnosticsSnapshot & { sampledAt?: number | null; nativeActive?: boolean };
-export type IndicatorPosition = 'top-right' | 'top-left' | 'bottom-right';
+export type StreamIndicatorTarget = {
+  streamId?: () => string | undefined;
+  ownScreen?: boolean;
+  active?: () => boolean;
+  requested?: () => { resolution: string; fps: number; codec: string } | null;
+};
 export type StreamIndicatorCard = {
   id: string;
   title: string;
   direction: 'inbound' | 'outbound';
+  media: 'screen' | 'camera' | 'unknown';
   summary: string;
+  qualityLimited: boolean;
   rows: { label: string; value: string }[];
 };
 export type StreamIndicatorModel = {
@@ -15,17 +22,18 @@ export type StreamIndicatorModel = {
   sampleAgeMs: number | null;
   selectedId: string | null;
   cards: StreamIndicatorCard[];
+  requested?: { resolution: string; fps: number; codec: string };
 };
 export type StreamIndicatorOptions = {
   document?: Document;
   enabled?: boolean;
   detailed?: boolean;
-  position?: IndicatorPosition;
   now?: () => number;
 };
 
 const STALE_AFTER_MS = 7_000;
-const HOST_ID = 'lolkamod-stream-indicator';
+const MAX_VIEWS = 64;
+let nextViewId = 1;
 const activeControllers = new WeakMap<Document, { stop(): void }>();
 
 function finite(value: unknown): number | null {
@@ -87,37 +95,63 @@ function streamCards(streams: StreamRecord[]): StreamIndicatorCard[] {
       return {
         id: stableId,
         title, direction: stream.direction,
+        media: stream.media === 'screen' || stream.media === 'camera' ? stream.media : 'unknown',
+        qualityLimited: ['cpu', 'bandwidth', 'other'].includes(stream.qualityLimitationReason ?? ''),
         summary: `${dimensions(actual)} · ${fps(actual?.fps)} · ${bitrate(stream.bitrateKbps)} · ${codec(stream.codec)}`,
         rows,
       };
     });
 }
 
-const CSS = `
-:host{all:initial;color-scheme:dark;font:12px/1.45 "Segoe UI",system-ui,sans-serif;color:#f3f5fb}
-*{box-sizing:border-box}
-.card{position:fixed;top:64px;right:18px;z-index:2147482000;width:min(320px,calc(100vw - 36px));
-padding:10px 12px;border:1px solid #485165;border-radius:12px;background:#151a24ed;box-shadow:0 8px 28px #0006;pointer-events:none}
-.card[data-position="top-left"]{left:18px;right:auto}
-.card[data-position="bottom-right"]{top:auto;bottom:108px}
-.card[hidden],[hidden]{display:none!important}
-.heading{font-weight:650;margin:0 0 4px}
-.summary{color:#e5eaf3;overflow-wrap:anywhere}
-.notice{color:#b7c3d6;margin-top:5px}
-select{width:100%;margin-bottom:7px;padding:4px;border:1px solid #58637a;border-radius:6px;background:#202736;
-color:#f3f5fb;font:inherit;pointer-events:auto}
-select:focus-visible{outline:2px solid #a7bcff;outline-offset:2px}
-dl{display:grid;grid-template-columns:1fr auto;gap:4px 10px;margin:8px 0 0}
-dt{color:#b7c3d6}dd{margin:0;text-align:right;color:#edf2fb}
+const ICON_CSS = `
+:host{all:initial;display:inline-flex;vertical-align:middle;width:18px;height:18px;line-height:0;color:var(--color-text-secondary,#9b9ba2)}
+:host([hidden]){display:none}
+button{all:unset;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+border-radius:3px;cursor:help;color:var(--color-text-secondary,#9b9ba2);box-sizing:border-box}
+button[data-state="live"]{color:var(--color-status-success-bright,#43b581)}
+button[data-state="limited"],button[data-state="stale"]{color:var(--color-status-warning,#faa61a)}
+button:hover{background:#ffffff14}button:focus-visible{outline:2px solid #a7bcff;outline-offset:3px}
+svg{display:block;width:18px;height:18px;pointer-events:none}
 `;
+const TOOLTIP_CSS = `
+:host{all:initial;display:contents;color-scheme:dark;font:12px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--color-text-primary,#f3f5fb)}
+*{box-sizing:border-box}
+.tooltip{position:fixed;z-index:2147482000;width:min(280px,calc(100vw - 24px));padding:11px 13px;
+border:1px solid var(--color-border-primary,#485165);border-radius:9px;background:var(--color-bg-tooltip,#151a24);box-shadow:0 8px 28px #0008;pointer-events:none}
+.heading{font-weight:650;margin:0 0 7px}.summary{color:var(--color-text-normal,#e5eaf3);overflow-wrap:anywhere}
+.summary{white-space:pre-line}
+.notice{color:var(--color-text-secondary,#aab6c9);margin-top:8px;font-size:11px}
+dl{display:grid;grid-template-columns:1fr auto;gap:5px 10px;margin:0}
+dt{color:var(--color-text-secondary,#b7c3d6)}dd{margin:0;text-align:right;color:var(--color-text-primary,#edf2fb)}
+[hidden]{display:none!important}
+`;
+
+type IndicatorView = {
+  container: HTMLElement;
+  target: StreamIndicatorTarget;
+  revision: number;
+  host: HTMLElement;
+  button: HTMLButtonElement;
+  portal: HTMLElement;
+  tooltip: HTMLElement;
+  heading: HTMLElement;
+  summary: HTMLElement;
+  details: HTMLElement;
+  notice: HTMLElement;
+  hovered: boolean;
+  focused: boolean;
+  model: StreamIndicatorModel;
+  cleanup(): void;
+};
 
 export type StreamIndicatorController = {
   update(snapshot: IndicatorSnapshot | null | undefined): void;
   setEnabled(enabled: boolean): void;
   setDetailed(detailed: boolean): void;
-  setPosition(position: IndicatorPosition): void;
+  attach(container: HTMLElement, target?: StreamIndicatorTarget): () => void;
+  detach(container: HTMLElement): void;
   select(id: string): void;
-  model(): StreamIndicatorModel;
+  model(container?: HTMLElement): StreamIndicatorModel;
   stop(): void;
 };
 
@@ -133,21 +167,186 @@ export function createStreamIndicator(options: StreamIndicatorOptions = {}): Str
   let lastSamples = -1;
   let observedAt: number | null = null;
   let latestModel: StreamIndicatorModel = { status: 'idle', message: 'Стрим не запущен', sampleAgeMs: null, selectedId, cards: [] };
-  const host = doc.createElement('div');
-  host.id = HOST_ID;
-  host.setAttribute('data-lolkamod-owned', 'stream-indicator');
-  const shadow = host.attachShadow({ mode: 'open' });
-  const style = doc.createElement('style'); style.textContent = CSS;
-  const card = doc.createElement('section'); card.className = 'card';
-  card.dataset.position = options.position ?? 'top-right';
-  card.setAttribute('aria-label', 'Показатели видеопотока LolkaMod');
-  const selection = doc.createElement('select'); selection.setAttribute('aria-label', 'Видеопоток');
-  const heading = doc.createElement('div'); heading.className = 'heading';
-  const summary = doc.createElement('div'); summary.className = 'summary';
-  const notice = doc.createElement('div'); notice.className = 'notice';
-  const details = doc.createElement('dl');
-  card.append(selection, heading, summary, notice, details);
-  shadow.append(style, card);
+  const views = new Map<HTMLElement, IndicatorView>();
+  let openView: IndicatorView | undefined;
+
+  function cloneModel(model: StreamIndicatorModel): StreamIndicatorModel {
+    return { ...model, ...(model.requested ? { requested: { ...model.requested } } : {}),
+      cards: model.cards.map(stream => ({ ...stream, rows: stream.rows.map(row => ({ ...row })) })) };
+  }
+
+  function closeTooltip(view: IndicatorView) {
+    view.portal.remove();
+    view.button.setAttribute('aria-expanded', 'false');
+    if (openView === view) openView = undefined;
+  }
+
+  function positionTooltip(view: IndicatorView) {
+    if (!view.portal.isConnected) return;
+    const anchor = view.button.getBoundingClientRect();
+    const popup = view.tooltip.getBoundingClientRect();
+    const width = doc.defaultView?.innerWidth ?? doc.documentElement.clientWidth;
+    const height = doc.defaultView?.innerHeight ?? doc.documentElement.clientHeight;
+    const left = Math.max(8, Math.min(anchor.right - popup.width, width - popup.width - 8));
+    const above = anchor.top - popup.height - 8;
+    const preferredTop = above >= 8 ? above : anchor.bottom + 8;
+    const top = Math.max(8, Math.min(preferredTop, height - popup.height - 8));
+    view.tooltip.style.left = `${Math.round(left)}px`;
+    view.tooltip.style.top = `${Math.round(top)}px`;
+  }
+
+  function updateTooltip(view: IndicatorView) {
+    const model = view.model, selected = model.cards[0];
+    view.heading.textContent = selected?.direction === 'outbound' && view.target.ownScreen
+      ? 'Мой стрим' : 'Показатели видео';
+    const requested = model.requested;
+    view.summary.textContent = `${requested ? `Выбрано: ${requested.resolution} · ${requested.fps} FPS · ${requested.codec}\n` : ''}${model.message}`;
+    view.summary.hidden = model.status === 'live';
+    view.details.hidden = model.status !== 'live' || !selected;
+    view.details.replaceChildren();
+    if (selected && model.status === 'live') for (const row of selected.rows) {
+      if (!detailed && ['Размер захвата', 'FPS в настройках захвата', 'Ограничение качества'].includes(row.label)) continue;
+      const label = doc.createElement('dt'); label.textContent = row.label;
+      const value = doc.createElement('dd'); value.textContent = row.value;
+      view.details.append(label, value);
+    }
+    view.notice.textContent = model.status === 'live' && selected?.direction === 'outbound'
+      ? 'Данные отправителя; качество у зрителя может отличаться.'
+      : model.status === 'live' && selected?.direction === 'inbound' ? 'Данные декодирования в этом клиенте.' : '';
+    view.notice.hidden = !view.notice.textContent;
+    positionTooltip(view);
+  }
+
+  function syncTooltip(view: IndicatorView) {
+    if (!enabled || stopped || !view.host.isConnected || view.host.hidden) {
+      view.hovered = false; view.focused = false;
+      closeTooltip(view); return;
+    }
+    if (!(view.hovered || view.focused) || !doc.body) {
+      closeTooltip(view); return;
+    }
+    if (openView && openView !== view) {
+      openView.hovered = false; openView.focused = false;
+      closeTooltip(openView);
+    }
+    if (!view.portal.isConnected) doc.body.append(view.portal);
+    openView = view;
+    view.button.setAttribute('aria-expanded', 'true');
+    updateTooltip(view);
+  }
+
+  function resolveModel(view: IndicatorView): StreamIndicatorModel {
+    let active: boolean | undefined;
+    try { active = view.target.active?.(); } catch { /* Host state can disappear during unmount. */ }
+    if (active === false) return { status: 'idle', message: 'Стрим не запущен', sampleAgeMs: null, selectedId: null, cards: [] };
+    let requested: StreamIndicatorModel['requested'];
+    if (view.target.ownScreen) try {
+      const value = view.target.requested?.();
+      if (value && ['480p', '720p', '1080p', '1440p'].includes(value.resolution)
+        && [15, 30, 60].includes(value.fps) && ['auto', 'av1', 'vp8', 'vp9', 'h264'].includes(value.codec.toLowerCase())) {
+        requested = { resolution: value.resolution, fps: value.fps,
+          codec: value.codec.toLowerCase() === 'auto' ? 'Авто' : value.codec.toUpperCase() };
+      }
+    } catch { /* Requested settings are optional and never replace measurements. */ }
+    let requestedId: string | undefined;
+    try { requestedId = view.target.streamId?.(); } catch { /* A missing host/video reference must not affect rendering. */ }
+    let selected = typeof requestedId === 'string' && /^\d+:(?:inbound|outbound):\d+$/.test(requestedId)
+      ? latestModel.cards.find(card => card.id === requestedId) : undefined;
+    if (!selected && view.target.ownScreen) {
+      const candidates = latestModel.cards.filter(card => card.direction === 'outbound' && card.media === 'screen');
+      if (candidates.length === 1) selected = candidates[0];
+    }
+    if (selected) {
+      const status = latestModel.status === 'stale' ? 'stale' : snapshot?.state.samples === 0 ? 'waiting' : 'live';
+      return { status, message: status === 'stale' ? 'Ожидание свежих данных' : status === 'waiting' ? 'Ожидание показателей видео' : '',
+        sampleAgeMs: latestModel.sampleAgeMs, selectedId: selected.id, cards: [selected], ...(requested ? { requested } : {}) };
+    }
+    const own = view.target.ownScreen;
+    const status = own && (snapshot?.nativeActive || active) ? 'unavailable'
+      : own && snapshot?.state.displayCapture && latestModel.cards.length === 0 ? 'waiting'
+        : own && !snapshot?.nativeActive && latestModel.status === 'idle' ? 'idle' : 'unavailable';
+    const message = status === 'idle' ? 'Стрим не запущен'
+      : status === 'waiting' ? 'Ожидание показателей видео'
+        : own && (snapshot?.nativeActive || active) ? 'Стрим активен; фактические метрики недоступны' : 'Метрики этого видео не сопоставлены';
+    return { status, message, sampleAgeMs: latestModel.sampleAgeMs, selectedId: null, cards: [], ...(requested ? { requested } : {}) };
+  }
+
+  function renderView(view: IndicatorView) {
+    view.model = resolveModel(view);
+    view.host.hidden = !enabled || view.model.status === 'idle';
+    const selected = view.model.cards[0];
+    view.button.dataset.state = selected?.qualityLimited && view.model.status === 'live' ? 'limited' : view.model.status;
+    const requested = view.model.requested;
+    const chosen = view.model.status !== 'live' && requested
+      ? `; выбрано ${requested.resolution}, ${requested.fps} FPS, ${requested.codec}` : '';
+    view.button.setAttribute('aria-label', `Показатели видео: ${view.model.message || selected?.summary || 'Нет данных'}${chosen}`);
+    syncTooltip(view);
+  }
+
+  function detach(container: HTMLElement) {
+    const view = views.get(container); if (!view) return;
+    closeTooltip(view); view.cleanup(); view.host.remove(); views.delete(container);
+  }
+
+  function attach(container: HTMLElement, target: StreamIndicatorTarget = {}): () => void {
+    if (stopped || !container || container.ownerDocument !== doc) return () => {};
+    const previous = views.get(container);
+    if (previous) {
+      previous.target = target; const revision = ++previous.revision; renderView(previous);
+      return () => { if (views.get(container) === previous && previous.revision === revision) detach(container); };
+    }
+    if (views.size >= MAX_VIEWS) return () => {};
+    const id = nextViewId++;
+    const host = doc.createElement('span'); host.id = `lolkamod-stream-indicator-${id}`;
+    host.setAttribute('data-lolkamod-owned', 'stream-indicator');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = doc.createElement('style'); style.textContent = ICON_CSS;
+    const button = doc.createElement('button'); button.type = 'button';
+    button.setAttribute('aria-expanded', 'false');
+    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('aria-hidden', 'true');
+    const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M4 3.5h12A1.5 1.5 0 0 1 17.5 5v7A1.5 1.5 0 0 1 16 13.5H4A1.5 1.5 0 0 1 2.5 12V5A1.5 1.5 0 0 1 4 3.5ZM10 13.5V17M7 17h6');
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.5'); path.setAttribute('stroke-linecap', 'round');
+    const bars = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    bars.setAttribute('d', 'M6 10V8M10 10V6M14 10V7'); bars.setAttribute('fill', 'none');
+    bars.setAttribute('stroke', 'currentColor'); bars.setAttribute('stroke-width', '1.5'); bars.setAttribute('stroke-linecap', 'round');
+    svg.append(path, bars); button.append(svg); shadow.append(style, button); container.append(host);
+    const portal = doc.createElement('div'); portal.setAttribute('data-lolkamod-owned', 'stream-tooltip');
+    const portalShadow = portal.attachShadow({ mode: 'open' });
+    const popupStyle = doc.createElement('style'); popupStyle.textContent = TOOLTIP_CSS;
+    const tooltip = doc.createElement('section'); tooltip.className = 'tooltip'; tooltip.id = `lolkamod-stream-tooltip-${id}`;
+    tooltip.setAttribute('role', 'tooltip');
+    const heading = doc.createElement('div'); heading.className = 'heading';
+    const summary = doc.createElement('div'); summary.className = 'summary';
+    const details = doc.createElement('dl'); const notice = doc.createElement('div'); notice.className = 'notice';
+    tooltip.append(heading, summary, details, notice); portalShadow.append(popupStyle, tooltip);
+    const view: IndicatorView = { container, target, revision: 1, host, button, portal, tooltip, heading, summary, details, notice,
+      hovered: false, focused: false, model: latestModel, cleanup: () => {} };
+    const enter = () => { view.hovered = true; renderView(view); };
+    const leave = () => { view.hovered = false; syncTooltip(view); };
+    const focus = () => { view.focused = true; renderView(view); };
+    const blur = () => { view.focused = false; syncTooltip(view); };
+    const click = (event: MouseEvent) => { event.stopPropagation(); };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); view.hovered = false; view.focused = false; closeTooltip(view); }
+    };
+    button.addEventListener('mouseenter', enter); button.addEventListener('mouseleave', leave);
+    button.addEventListener('focus', focus); button.addEventListener('blur', blur);
+    button.addEventListener('click', click); button.addEventListener('keydown', key);
+    const reposition = () => positionTooltip(view);
+    doc.defaultView?.addEventListener('resize', reposition);
+    doc.addEventListener('scroll', reposition, true);
+    view.cleanup = () => {
+      button.removeEventListener('mouseenter', enter); button.removeEventListener('mouseleave', leave);
+      button.removeEventListener('focus', focus); button.removeEventListener('blur', blur);
+      button.removeEventListener('click', click); button.removeEventListener('keydown', key);
+      doc.defaultView?.removeEventListener('resize', reposition); doc.removeEventListener('scroll', reposition, true);
+    };
+    views.set(container, view); renderView(view);
+    return () => { if (views.get(container) === view && view.revision === 1) detach(container); };
+  }
 
   function render() {
     if (stopped) return;
@@ -164,34 +363,9 @@ export function createStreamIndicator(options: StreamIndicatorOptions = {}): Str
         : status === 'waiting' ? 'Ожидание показателей видео'
         : status === 'stale' ? 'Ожидание свежих данных' : '';
     latestModel = { status, message, sampleAgeMs: age, selectedId, cards };
-    card.hidden = !enabled || status === 'idle';
-    if (enabled && !host.isConnected && doc.body) doc.body.append(host);
-    if (!enabled) host.remove();
-    selection.replaceChildren();
-    for (const stream of cards) {
-      const option = doc.createElement('option'); option.value = stream.id; option.textContent = stream.title;
-      selection.append(option);
-    }
-    selection.hidden = cards.length < 2;
-    selection.value = selectedId ?? '';
-    const selected = cards.find(stream => stream.id === selectedId);
-    heading.textContent = selected?.title ?? 'Показатели стрима';
-    summary.textContent = status === 'live' ? selected?.summary ?? message : message;
-    notice.textContent = status === 'live' && selected?.direction === 'outbound'
-      ? 'Данные отправителя; качество у зрителя может отличаться.'
-      : status === 'live' && selected?.direction === 'inbound'
-        ? 'Входящее видео; источник не определён.' : '';
-    details.hidden = !detailed || status !== 'live' || !selected;
-    details.replaceChildren();
-    if (selected) for (const row of selected.rows) {
-      const label = doc.createElement('dt'); label.textContent = row.label;
-      const value = doc.createElement('dd'); value.textContent = row.value;
-      details.append(label, value);
-    }
+    for (const view of views.values()) renderView(view);
   }
 
-  const onSelect = () => { selectedId = selection.value; render(); };
-  selection.addEventListener('change', onSelect);
   const controller: StreamIndicatorController = {
     update(next) {
       if (stopped) return;
@@ -202,14 +376,13 @@ export function createStreamIndicator(options: StreamIndicatorOptions = {}): Str
     },
     setEnabled(value) { enabled = value; render(); },
     setDetailed(value) { detailed = value; render(); },
-    setPosition(position) { if (['top-right', 'top-left', 'bottom-right'].includes(position)) card.dataset.position = position; },
+    attach, detach,
     select(id) { if (latestModel.cards.some(stream => stream.id === id)) { selectedId = id; render(); } },
-    model: () => ({ ...latestModel, cards: latestModel.cards.map(stream => ({ ...stream, rows: stream.rows.map(row => ({ ...row })) })) }),
+    model: container => cloneModel(container && views.get(container) ? views.get(container)!.model : latestModel),
     stop() {
       if (stopped) return;
       stopped = true;
-      selection.removeEventListener('change', onSelect);
-      host.remove();
+      for (const container of [...views.keys()]) detach(container);
       snapshot = null;
       if (activeControllers.get(doc) === controller) activeControllers.delete(doc);
     },

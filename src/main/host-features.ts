@@ -14,7 +14,7 @@ const settingsSpecs = [
 // Windows desktop source chooser is opened before the old stream is stopped. Cancel is harmless.
 const changeSource = `[t,o,n,r,a,l,e]);return{isScreenSharing:t,handleScreenShare:c,isElectron:o(),changeSource:async u=>{
  if(!o())throw new Error("Источник меняется в desktop Lolka");
- const stop=async()=>{if(fB())await RG();else if(s2e()){const result=await PE(u);if(result?.success===false)throw new Error("Не удалось остановить текущий стрим")}};
+ const stop=async()=>{if(fB())await RG();else if(Ht.getState().isScreenSharing){const result=await PE(u);if(result?.success===false)throw new Error("Не удалось остановить текущий стрим")}};
  let selecting=false;
  const select=async(...args)=>{if(selecting)return;selecting=true;try{await stop();await a(args[0],u,...args.slice(1))}catch(error){n(_e.Alert,{message:error instanceof Error?error.message:String(error)})}finally{selecting=false}};
  if($ae()){
@@ -30,7 +30,7 @@ const controlsSpecs = [
   {find:'[t,o,n,r,a,l,e]);return{isScreenSharing:t,handleScreenShare:c,isElectron:o()}',replace:changeSource},
   {find:'{visualVideoEnabled:j,videoEnabled:R,handleVideoToggle:P}=fDe(),{isScreenSharing:z,handleScreenShare:L}=hDe()',replace:'{visualVideoEnabled:j,videoEnabled:R,handleVideoToggle:P}=fDe(),{isScreenSharing:z,handleScreenShare:L,changeSource:__lmChangeSource}=hDe()'},
   {find:'Ar=v.useCallback(()=>{L(he?Number(he):void 0)},[L,he])'},
-  {find:toolbarFind,replace:toolbarFind+',_De()&&s.jsx(__lmHostToolbar,{active:z,onStop:Ar,onSource:()=>__lmChangeSource(he?Number(he):void 0)})'},
+  {find:toolbarFind,replace:toolbarFind+',_De()&&s.jsx(__lmHostToolbar,{active:z,onStop:Ar,onSource:()=>__lmChangeSource(Ht.getState().currentVoiceChannel?.channelId)})'},
   {find:'const o=v.useCallback(()=>typeof window.electronAPI<"u",[]),a=v.useCallback(async(u,d,f,h,m,g)=>{if(r(_e.ElectronSourcePicker),$ae()){try{await pgt({sourceId:u,channelId:d,resolution:h,fps:m,codec:g,audio:f===!1});const _=Y2e();_&&Sxe(_,!0,bxe(u))}catch(_){n(_e.Alert,{message:_ instanceof Error?_.message:String(_)})}return}const y=await Iyt(u,d,f,h,m,g);y.success||console.error("[ScreenShare] JS screen share failed:",y.error)},[r,n])'},
   {find:'if(fB()){await RG();return}'},
   {find:'const{sources:d,capabilities:f}=await dgt();n(_e.ElectronSourcePicker,{sources:d,native:{codecs:f.codecs,audio:f.audio===!0},onSourceSelect:(h,m,g,y,_)=>{a(h,u,m,g,y,_)},onCancel:()=>r(_e.ElectronSourcePicker),serverLevel:_2()})'},
@@ -38,37 +38,46 @@ const controlsSpecs = [
   {find:'aie=async e=>Ht.getState().isScreenSharing?await PE(e):await kyt(e)'},
   {find:'hDe=()=>{const{t:e}=Xe("voice"),t=s2e(),{openModal:n,closeModal:r}=cn()'},
   {find:'Lyt=()=>fB()?Y2e():OZ()?LZ():null'},
-  {find:'IE.requestPip({userId:wr,sourceType:"screenshare",displayName:yo,videoElement:nxe(wr)})'},
-  {find:'PG=new Map,nxe=e=>PG.get(e),rxe=v.memo(({stream:e,name:t,userId:n,viewersCount:r,screenShareId:o'},
-  {find:'if(f6()){j1.getState().open({userId:t,sourceType:n,displayName:r});return}'},
-  {find:'exitPipForUser(t,n){f6()&&j1.getState().closeFor(t,n)'},
   {find:'u_=async e=>{if(fB())return mgt({resolution:e.resolution,fps:e.fps,codec:e.codec})'},
 ];
 
-export const hostContractSpecs={settings:settingsSpecs,controls:controlsSpecs};
+const liveFind="Rn&&kr?.type.includes(Ea.SCREEN_SHARE)&&s.jsxs(\"div\",{className:qr.liveStatus,children:[qn&&s.jsx(nn,{content:s.jsxs(\"div\",{children:[s.jsx(\"div\",{children:hs?.ping!==null&&hs?.ping!==void 0?r(\"screenShare.stats.ping\",{ping:hs.ping}):r(\"screenShare.stats.pingMeasuring\")}),s.jsx(\"div\",{children:r(\"screenShare.stats.server\",{server:ms})}),hs?.transportProtocol&&s.jsx(\"div\",{children:r(\"screenShare.stats.transport\",{protocol:jZ(hs.transportProtocol)})})]}),children:s.jsx(\"span\",{className:fe(qr.liveStatusIcon,{[qr.liveStatusIconAverage]:hs?.connectionQuality===\"average\",[qr.liveStatusIconBad]:hs?.connectionQuality===\"bad\"}),children:hs?.connectionQuality===\"bad\"?s.jsx(SY,{size:20}):hs?.connectionQuality===\"average\"?s.jsx(bY,{size:20}):s.jsx(wY,{size:20})})}),s.jsx(rh,{appearance:\"danger\",children:r(\"screenShare.live\")})]})";
+const streamToolsSpecs=[
+  {find:liveFind,replace:liveFind.replace('s.jsx(rh,{appearance:', 's.jsx(__lmHostStreamTools,{userId:kr.userId,ownScreen:kr.type===Ea.MY_SCREEN_SHARE}),s.jsx(rh,{appearance:')},
+  {find:'isMyStream:Sr.type===Ea.MY_SCREEN_SHARE'},
+  {find:'PG=new Map,nxe=e=>PG.get(e),rxe=v.memo(({stream:e,name:t,userId:n,viewersCount:r,screenShareId:o'},
+];
+export const hostContractSpecs={settings:settingsSpecs,controls:controlsSpecs,streamTools:streamToolsSpecs};
 export function transformHostFeatures(source:string, hash:string, testKnown=false) {
   let body=source;
-  const features:Record<string,string>={settings:"unsupported",controls:"unsupported"};
+  const features:Record<string,string>={settings:"unsupported",controls:"unsupported",streamTools:"unsupported"};
   const settings=optionalContracts(body,settingsSpecs,["v","s","Ao","cn","_e","M"]);
   if(settings){
     const test=optionalContracts(source,[
       {find:'P$n=({isOpen:e,onClose:t,className:n,...r})=>{const{t:o}=Xe("settings"),{settingsActiveTab:a,setSettingsActiveTab:l,settingsAudioVideoTab:c'},
       {find:'Eje.createRoot(document.getElementById("root")).render(s.jsx(Var,{children:s.jsx(vPe,{i18n:At'},
     ],["P$n","Eje","s","vPe","At"]);
-    const testReference=test?test.rebind(`,...(globalThis.LolkaModNative?.diagnostics().testMode?{test:{mount:container=>{const root=Eje.createRoot(container);root.render(s.jsx(vPe,{i18n:At,children:s.jsx(P$n,{isOpen:true,onClose:()=>{}})}));return()=>root.unmount()}}}:{})`):"";
+    const testReference=test?test.rebind(`,...(globalThis.LolkaModNative?.diagnostics().testMode?{test:{mount:container=>{const root=Eje.createRoot(container);root.render(s.jsx(vPe,{i18n:At,children:s.jsx(P$n,{isOpen:true,onClose:()=>{}})}));return()=>root.unmount()},mountChrome:(container,props)=>{const root=Eje.createRoot(container);root.render(s.jsxs("div",{style:{position:"fixed",bottom:20,left:60,width:100,height:50,overflow:"hidden",transform:"translateZ(0)"},children:[typeof __lmHostToolbar==="function"&&s.jsx(__lmHostToolbar,props),typeof __lmHostStreamTools==="function"&&s.jsx(__lmHostStreamTools,props)]}));return()=>root.unmount()}}}:{})`):"";
     body=settings.body+settings.rebind(`
 function __lmHostSettings(){const ref=v.useRef(null);v.useEffect(()=>globalThis.LolkaMod?.mountSettings(ref.current),[]);return s.jsx("div",{ref,"data-lolkamod-host-settings":true})}
 ;globalThis.LolkaMod?.modules.register("HostSettings",Object.freeze({open:()=>{cn.getState().setSettingsActiveTab("lolkamod");cn.getState().openModal(_e.Settings)}${testReference}}),"${hash}");
 `);
     features.settings="available";
   }
-  const controls=optionalContracts(body,controlsSpecs,["v","s","he","fB","RG","PE","s2e","$ae","dgt","Ryt","_e","_2","Lyt","IE","nxe","PG","u_","f6"]);
+  const controls=optionalContracts(body,controlsSpecs,["v","s","he","fB","RG","PE","s2e","Ht","$ae","dgt","Ryt","_e","_2","Lyt","u_"]);
   if(controls){
     body=controls.body+controls.rebind(`
 function __lmHostToolbar(props){const ref=v.useRef(null),current=v.useRef(props);current.current=props;v.useEffect(()=>globalThis.LolkaMod?.mountStreamMenu(ref.current,{get active(){return current.current.active},onStop:()=>current.current.onStop(),onSource:()=>current.current.onSource()}),[]);return s.jsx("span",{ref,"data-lolkamod-host-toolbar":true})}
-;globalThis.LolkaMod?.modules.register("StreamControls",Object.freeze({active:()=>Lyt(),setQuality:profile=>u_(profile),videos:()=>[...PG.entries()].filter(([,video])=>video?.tagName==="VIDEO"&&video.isConnected).map(([id,video],index)=>({id,video,title:"Стрим "+(index+1)})),nativePip:()=>f6(),pipAvailable:()=>f6()||document.pictureInPictureEnabled,pip:id=>IE.requestPip({userId:id,sourceType:"screenshare",displayName:"Стрим",videoElement:nxe(id)}),closePip:id=>IE.exitPipForUser(id,"screenshare")}),"${hash}");
+;globalThis.LolkaMod?.modules.register("StreamControls",Object.freeze({active:()=>Lyt(),setQuality:profile=>u_(profile)}),"${hash}");
 `);
     features.controls="available";
+  }
+  const streamTools=optionalContracts(body,streamToolsSpecs,["v","s","kr","Ea","nxe"]);
+  if(streamTools){
+    body=streamTools.body+streamTools.rebind(`
+function __lmHostStreamTools(props){const ref=v.useRef(null),current=v.useRef(props);current.current=props;v.useEffect(()=>globalThis.LolkaMod?.mountStreamTools(ref.current,{get userId(){return current.current.userId},get ownScreen(){return current.current.ownScreen},get video(){return nxe(current.current.userId)}}),[props.userId,props.ownScreen]);return s.jsx("span",{ref,"data-lolkamod-host-stream-tools":true})}
+`);
+    features.streamTools="available";
   }
   return {body,features,changed:body!==source};
 }

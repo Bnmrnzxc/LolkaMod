@@ -62,7 +62,7 @@ test('missing settings write atomically and malformed or future schemas remain u
     const store = createSettingsStore(directory); const file = path.join(directory, 'settings.json');
     assert.deepEqual(store.read(), defaults()); assert.equal(store.status(), 'missing');
     const expected = { ...defaults(), enabled: true, customCss: '/* local */', themeId: 'amoled', indicatorEnabled: true,
-      miniPlayerEnabled: false, streamMenuEnabled: false };
+      streamMenuEnabled: false };
     assert.deepEqual(store.write(expected), expected); assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), expected);
     assert.equal(store.status(), 'ready'); assert.equal((await backups(directory)).length, 0);
     assert.equal((await fs.readdir(directory)).includes('settings.json.tmp'), false);
@@ -89,9 +89,22 @@ test('invalid new preferences do not mutate valid saved settings or create backu
     const file = path.join(directory, 'settings.json'); const before = await fs.readFile(file);
     for (const invalid of [
       { ...defaults(), themeId: 'remote-url' }, { ...defaults(), customCss: 'x'.repeat(settings.MAX_CSS_LENGTH + 1) },
+      { ...defaults(), miniPlayerDock:'middle' }, { ...defaults(),miniPlayerDock:['bottom-right'] },
       { ...defaults(), profile: { ...defaults().profile, bitrateMbps: NaN } }, { ...defaults(), unexpectedField: true },
     ]) assert.throws(() => store.write(invalid));
     assert.deepEqual(await fs.readFile(file), before); assert.equal((await backups(directory)).length, 0);
+  });
+});
+
+test('removed mini-player preferences do not reset existing theme, CSS, menu or quality settings', async () => {
+  await temporary(async directory => {
+    const expected={...defaults(),themeId:'amoled',customCss:'body { color: white; }',indicatorEnabled:true,streamMenuEnabled:false};
+    const legacy={...expected,miniPlayerEnabled:false,miniPlayerDock:'top-left'};
+    const file=path.join(directory,'settings.json');await fs.writeFile(file,JSON.stringify(legacy));
+    const store=createSettingsStore(directory);assert.deepEqual(store.read(),expected);assert.equal(store.status(),'ready');
+    assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),legacy,'read leaves existing bytes intact');
+    assert.deepEqual(store.write(expected),expected);assert.deepEqual(createSettingsStore(directory).read(),expected);
+    assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),expected);
   });
 });
 

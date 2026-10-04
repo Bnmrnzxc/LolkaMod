@@ -10,7 +10,7 @@ export interface FeatureSettingsOptions {
   checkUpdates(): Promise<UpdateStatus>;
   updateStatus(): UpdateStatus;
   openRelease(): Promise<void>;
-  capabilities(): { settings: boolean; controls: boolean; pip: boolean };
+  capabilities(): { settings: boolean; controls: boolean };
 }
 
 export function mountFeatureSettings(container: HTMLElement, options: FeatureSettingsOptions): () => void {
@@ -30,7 +30,7 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
     catch { if (!stopped) status.textContent = "Не удалось сохранить. Проверь диагностику; при повреждённых настройках доступен сброс."; }
     if (!stopped) refresh();
   }
-  function toggle(key: "indicatorEnabled"|"indicatorDetailed"|"miniPlayerEnabled"|"streamMenuEnabled", text: string) {
+  function toggle(key: "indicatorEnabled"|"indicatorDetailed"|"streamMenuEnabled", text: string) {
     const label = doc.createElement("label"); label.textContent = text;
     const input = doc.createElement("input"); input.type = "checkbox"; input.dataset.setting = key;
     input.addEventListener("change", () => void save({[key]:input.checked}), {signal});
@@ -43,7 +43,6 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
   themeLabel.append(theme); root.append(themeLabel);
   toggle("indicatorEnabled","Индикатор качества видео");
   toggle("indicatorDetailed","Подробные метрики");
-  toggle("miniPlayerEnabled","Мини-плеер");
   toggle("streamMenuEnabled","Меню кнопки стрима");
   const support = doc.createElement("p"); root.append(support);
   const actions = doc.createElement("div"); actions.className="feature-actions";
@@ -76,7 +75,7 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
     const settings=options.settings();theme.value=settings.themeId;
     for(const [key,input] of checks) input.checked=Boolean(settings[key]);
     const capability=options.capabilities();
-    support.textContent = `Встроенные настройки: ${capability.settings?"доступны":"резервная панель"}. Меню стрима: ${capability.controls?"доступно":"не поддержано этой сборкой"}. Мини-плеер: ${capability.pip?"доступен для готового видео":"доступность зависит от клиента"}.`;
+    support.textContent = `Встроенные настройки: ${capability.settings?"доступны":"резервная панель"}. Меню стрима: ${capability.controls?"доступно":"не поддержано этой сборкой"}.`;
   }
   container.append(root);refresh();showUpdate(options.updateStatus());
   const unsubscribe=options.subscribe(refresh);

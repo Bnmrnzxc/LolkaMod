@@ -4,7 +4,7 @@ import { CDP } from './cdp.mjs';
 
 const version=JSON.parse(await fs.readFile('package.json','utf8')).version;
 const cdp = await CDP.connect();
-let evidence;
+let evidence, completed=false;
 try {
   for(let i=0;i<80;i++) {
     if(await cdp.evaluate('window.LolkaMod?.ready === true')) break;
@@ -43,7 +43,9 @@ try {
     const receiverPeer = new RTCPeerConnection({iceServers:[]});
     const video = document.createElement('video'); video.id = 'lm-synthetic-video'; video.muted=true; video.autoplay=true; video.playsInline=true;
     video.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none'; document.body.append(video);
-    window.__lmSynthetic = {senderPeer,receiverPeer,track,video,timer,saved,devices,descriptor,nativeCapture,nativePeer};
+    const tools=document.createElement('span');tools.style.cssText='position:fixed;right:24px;top:24px;z-index:2147481000';document.body.append(tools);
+    const toolsDispose=api.mountStreamTools(tools,{userId:'local-loopback',ownScreen:false,get video(){return video}});
+    window.__lmSynthetic = {senderPeer,receiverPeer,track,video,timer,saved,devices,descriptor,nativeCapture,nativePeer,tools,toolsDispose};
     receiverPeer.ontrack = event => { video.srcObject = new MediaStream([event.track]); void video.play().catch(()=>{}); };
     const localSender = senderPeer.addTrack(track, stream);
     const waitIce = pc => new Promise(resolve => {
@@ -94,13 +96,22 @@ try {
   assert.ok(evidence,'No matching encoded/decoded 2560×1440 frames observed within 12 seconds');
   assert.equal(evidence.indicator.status,'live');
   assert.ok(evidence.indicator.cards.some(card=>card.direction==='outbound'&&card.summary.includes('2560')));
+  const selected=await cdp.evaluate(`(()=>{
+    const root=window.__lmSynthetic.tools.querySelector('.lolkamod-stream-tools').shadowRoot;
+    const icon=root.querySelector('[data-lolkamod-owned=stream-indicator]'),b=icon.shadowRoot.querySelector('button');
+    b.dispatchEvent(new MouseEvent('mouseenter'));const text=document.querySelector('[data-lolkamod-owned=stream-tooltip]').shadowRoot.querySelector('[role=tooltip]').textContent;
+    b.dispatchEvent(new MouseEvent('mouseleave'));return {width:icon.getBoundingClientRect().width,label:b.getAttribute('aria-label'),text};
+  })()`);
+  assert.ok(selected.width<=24);assert.match(selected.text,/2560 × 1440/);assert.match(selected.text,/Декодируется/);assert.doesNotMatch(selected.text,/не сопоставлены/);
+  evidence.selectedVideoTooltip=selected;
+  completed=true;
 } finally {
   const cleanup = await cdp.evaluate(`(async()=>{
     const data=window.__lmSynthetic;if(!data)return{cleaned:false};
     window.LolkaMod.stop(); clearInterval(data.timer);
     const aliveBefore=data.track.readyState==='live'&&data.senderPeer.connectionState!=='closed';
     const hooksRestored=data.devices.getDisplayMedia!==data.nativeCapture&&window.RTCPeerConnection===data.nativePeer;
-    data.senderPeer.close();data.receiverPeer.close();data.track.stop();data.video.remove();
+    data.toolsDispose();data.tools.remove();data.senderPeer.close();data.receiverPeer.close();data.track.stop();data.video.remove();
     if(data.descriptor)Object.defineProperty(data.devices,'getDisplayMedia',data.descriptor);
     else delete data.devices.getDisplayMedia;
     window.LolkaMod.start();await window.LolkaMod.saveSettings(data.saved);delete window.__lmSynthetic;
@@ -109,6 +120,7 @@ try {
   })()`);
   if(evidence) {
     evidence.cleanup=cleanup;
+    evidence.status=completed?'PASS':'FAIL';
     assert.equal(cleanup.hostResourcesLeftAliveByStop,true); assert.equal(cleanup.hooksRestored,true);assert.equal(cleanup.noRemainingStreams,true);
     await fs.writeFile(`.runtime/evidence/stream-${version}.json`,JSON.stringify(evidence,null,2));
     console.log(JSON.stringify(evidence));
