@@ -33,10 +33,10 @@ try {
     await copy(file,path.join(windows,relative));
   }
   // Explicit public allowlist excludes research, profiles, vendor code, local paths and agent instructions.
-  for(const file of ['src','Installer','tests','scripts','.github','.gitignore','.gitattributes','README.md','LICENSE','THIRD_PARTY_NOTICES.md','docs','package.json','package-lock.json','tsconfig.json']) {
+  for(const file of ['src','Installer','assets','tests','scripts','.github','.gitignore','.gitattributes','README.md','LICENSE','THIRD_PARTY_NOTICES.md','docs','package.json','package-lock.json','tsconfig.json']) {
     if(file==='scripts') {
       await fs.mkdir(path.join(source,file),{recursive:true});
-      for(const name of ['build.mjs','build-installer.mjs','package-release.mjs','fetch-frontend.mjs','install.mjs','restore-desktop.ps1']) await copy(`scripts/${name}`,path.join(source,file,name));
+      for(const name of ['build.mjs','build-installer.mjs','build-brand-icons.ps1','package-release.mjs','fetch-frontend.mjs','install.mjs','restore-desktop.ps1']) await copy(`scripts/${name}`,path.join(source,file,name));
     } else await copy(file,path.join(source,file));
   }
   const artifacts=[`LolkaMod-${pkg.version}-Windows.zip`,`LolkaMod-${pkg.version}-Source.zip`];

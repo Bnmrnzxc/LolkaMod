@@ -1,5 +1,6 @@
 import { mountStreamControls, type StreamControlsOptions } from "./stream-panel";
 import { mountFeatureSettings, type FeatureSettingsOptions } from "./feature-settings";
+import { createBrandMark } from "../shared/brand";
 export type PanelSettings = {
   enabled: boolean;
   customCss: string;
@@ -39,7 +40,7 @@ const PANEL_STYLES = `
   button, textarea, input { font: inherit; }
   button { color: inherit; }
   button:focus-visible, textarea:focus-visible, input:focus-visible + .switch-track {
-    outline: 2px solid #a78bfa;
+    outline: 2px solid var(--color-brand-primary, #65b9dc);
     outline-offset: 3px;
   }
   .launcher {
@@ -48,9 +49,9 @@ const PANEL_STYLES = `
     bottom: 18px;
     width: 46px;
     height: 46px;
-    border: 1px solid #8b5cf6;
+    border: 1px solid #46464e;
     border-radius: 15px;
-    background: linear-gradient(145deg, #8b5cf6, #6d28d9);
+    background: #2c2c30;
     box-shadow: 0 8px 26px #0008;
     color: #fff;
     font-weight: 800;
@@ -71,9 +72,9 @@ const PANEL_STYLES = `
     padding: 20px;
     border: 1px solid #343247;
     border-radius: 18px;
-    background: #171622;
+    background: var(--color-bg-primary, #171622);
     box-shadow: 0 18px 60px #000b;
-    color: #f4f1ff;
+    color: var(--color-text-primary, #f4f1ff);
     pointer-events: auto;
   }
   .panel[hidden], .diagnostics[hidden] { display: none; }
@@ -85,13 +86,14 @@ const PANEL_STYLES = `
     place-items: center;
     width: 38px;
     height: 38px;
-    border-radius: 12px;
-    background: #2b2142;
-    color: #c4b5fd;
-    font-weight: 800;
+    color: var(--color-text-primary, #f5f0ff);
+    flex: 0 0 auto;
   }
+  .brand svg, .launcher svg { display: block; }
+  .launcher { display: grid; place-items: center; }
+  .launcher[hidden] { display: none; }
   h1 { margin: 0; font-size: 16px; font-weight: 700; }
-  .version { margin-top: 2px; color: #9d99ae; font-size: 12px; }
+  .version { margin-top: 2px; color: var(--color-text-secondary, #9d99ae); font-size: 12px; }
   .close, .secondary, .primary {
     min-height: 36px;
     border: 1px solid #3b394c;
@@ -137,7 +139,7 @@ const PANEL_STYLES = `
     content: "";
     transition: transform .15s ease;
   }
-  .switch input:checked + .switch-track { background: #7c3aed; }
+  .switch input:checked + .switch-track { background: var(--color-brand-primary, #65b9dc); }
   .switch input:checked + .switch-track::after { transform: translateX(18px); }
   .editor-label { display: block; margin-bottom: 7px; font-weight: 600; }
   textarea {
@@ -157,9 +159,9 @@ const PANEL_STYLES = `
   .hint { margin: 7px 0 0; color: #918da1; font-size: 11px; }
   .actions { gap: 9px; flex-wrap: wrap; }
   .primary, .secondary { padding: 0 13px; }
-  .primary { border-color: #7c3aed; background: #7c3aed; color: #fff; font-weight: 650; }
+  .primary { border-color: var(--color-brand-primary, #65b9dc); background: var(--color-brand-primary, #65b9dc); color: var(--color-text-on-brand, #172027); font-weight: 650; }
   .secondary { color: #ded9eb; }
-  .primary:hover { background: #8b5cf6; }
+  .primary:hover { background: var(--color-brand-primary-hover, #82c9e7); }
   .secondary:hover, .close:hover { background: #2c293a; }
   .diagnostics {
     max-height: 200px;
@@ -207,7 +209,7 @@ export function mountPanel(options: PanelOptions): () => void {
 
   const launcher = makeElement(document, "button", "launcher");
   launcher.type = "button";
-  launcher.textContent = "LM";
+  launcher.append(createBrandMark(document, "regular", 34));
   launcher.title = "Открыть панель LolkaMod (Ctrl+Shift+M)";
   launcher.setAttribute("aria-label", "Открыть панель LolkaMod");
   launcher.setAttribute("aria-expanded", "false");
@@ -223,7 +225,7 @@ export function mountPanel(options: PanelOptions): () => void {
   const titleRow = makeElement(document, "div", "title-row");
   const brand = makeElement(document, "div", "brand");
   brand.setAttribute("aria-hidden", "true");
-  brand.textContent = "LM";
+  brand.append(createBrandMark(document));
   const headingGroup = makeElement(document, "div");
   const heading = makeElement(document, "h1");
   heading.textContent = "LolkaMod";

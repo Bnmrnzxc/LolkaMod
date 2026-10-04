@@ -47,8 +47,14 @@ const integrity = path.join(staging, 'PayloadIntegrity.cs');
 await fs.writeFile(integrity, `namespace LolkaModInstaller { internal static class PayloadIntegrity { internal const string Sha256 = "${payloadHash}"; } }\n`);
 const compiler = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
 const exe = path.join(output, `LolkaModInstaller-${pkg.version}.exe`);
+const brand = path.join(root, 'assets', 'branding');
+const appIcon = path.join(brand, 'app.ico');
+const brandLogo = path.join(brand, 'logo.png');
+const manifest = path.join(root, 'Installer', 'app.manifest');
+await fs.access(appIcon); await fs.access(brandLogo); await fs.access(manifest);
 const source = ['Program.cs', 'InstallerBackend.cs', 'MainForm.cs'].map(f => path.join(root, 'Installer', f));
 await run(compiler, ['/nologo', '/target:winexe', '/platform:x64', '/optimize+', `/out:${exe}`,
+  `/win32icon:${appIcon}`, `/win32manifest:${manifest}`, `/resource:${appIcon},LolkaMod.Brand.App.ico`, `/resource:${brandLogo},LolkaMod.Brand.Logo.png`,
   '/r:System.dll', '/r:System.Core.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', '/r:System.Web.Extensions.dll',
   '/r:System.IO.Compression.dll', '/r:System.IO.Compression.FileSystem.dll', `/resource:${zipPath},LolkaMod.Payload.zip`, ...source, integrity], { windowsHide: true });
 const bytes = await fs.readFile(exe);

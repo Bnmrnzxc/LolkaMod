@@ -139,6 +139,42 @@ privateTest('missing and duplicate settings anchors fail only their optional set
   }
 });
 
+privateTest('native LM sidebar icon inherits tab color and unique mask IDs after symbol rebinding', async () => {
+  for (const source of [await fixture(), await renamedFixture()]) {
+    const result = transformHostFeatures(source, 'brand-test-hash');
+    assert.equal(result.features.settings, 'available');
+    const match = optionalContracts(source, hostContractSpecs.settings, ['v', 's']);
+    const declaration = syntax(result.body).body.find(node => node.type === 'FunctionDeclaration' && node.id?.name === '__lmHostBrand');
+    assert.ok(declaration, 'the native settings group owns its icon component');
+    let next = 0;
+    const jsx = (type, props) => ({ type, props });
+    const scope = { [match.binding.v]: { useId: () => `:brand-${++next}:` }, [match.binding.s]: { jsx, jsxs: jsx } };
+    const render = new vm.Script(`(${result.body.slice(declaration.start, declaration.end)})`).runInNewContext(scope);
+    const first = render(), second = render();
+    assert.equal(first.type, 'svg'); assert.equal(first.props.width, 24); assert.equal(first.props.height, 24);
+    assert.equal(first.props.fill, 'currentColor'); assert.equal(first.props['aria-hidden'], true);
+    const firstMask = first.props.children[0].props.children, secondMask = second.props.children[0].props.children;
+    assert.notEqual(firstMask.props.id, secondMask.props.id);
+    assert.equal(first.props.children[1].props.mask, `url(#${firstMask.props.id})`);
+    assert.equal(firstMask.props.children.length, 3);
+    const iconSpec = hostContractSpecs.settings.find(spec => spec.find.startsWith('const ue=I$n[Me.id]'));
+    assert.ok(iconSpec);
+    assert.equal(contractMatchCounts(result.body, [{ find: iconSpec.replace }])[0].count, 1,
+      'only the LolkaMod branch replaces the stock icon lookup');
+  }
+});
+
+privateTest('missing or duplicate sidebar icon contract leaves optional settings wholly unpatched', async () => {
+  const original = await fixture(), spec = hostContractSpecs.settings.find(item => item.find.startsWith('const ue=I$n[Me.id]'));
+  for (const source of [original.replace(spec.find, spec.find.replace('I$n[Me.id]', 'I$n[Me.changedId]')),
+    `${original}\nconst duplicateBrandIcon=()=>{${spec.find};};\n`]) {
+    const result = transformHostFeatures(source, 'brand-unsupported');
+    assert.deepEqual(result.features, { settings: 'unsupported', controls: 'available', streamTools: 'available' });
+    assert.equal(result.body.includes('function __lmHostBrand('), false);
+    assert.equal(result.body.includes('modules.register("HostSettings"'), false); syntax(result.body);
+  }
+});
+
 privateTest('changed or duplicate control contracts fail only their optional controls group', async () => {
   const original = await fixture(), signature = hostContractSpecs.controls[0].find;
   assert.ok(original.includes(signature));

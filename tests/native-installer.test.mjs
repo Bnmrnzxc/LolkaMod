@@ -449,6 +449,59 @@ test('unknown current entry refuses uninstall, then repair preserves it and rest
   });
 });
 
+test('structured status cards reflect actual entry and verified backup without mutating files', { skip: operationSkipReason }, async () => {
+  await withFixture(async ({ tempRoot, resources, archive }) => {
+    const original = await fs.readFile(archive);
+    let result = await invoke('--status', tempRoot); assertSuccess(result);
+    assert.equal(result.report.status.ClientFound, true);
+    assert.equal(result.report.status.HostVersion, '1.0.120');
+    assert.equal(result.report.status.ModInstalled, false);
+    assert.equal(result.report.status.BackupVerified, false);
+    assert.equal(result.report.status.NeedsRepatch, false);
+    assert.equal(result.report.status.RecoveryPending, false);
+    assert.deepEqual(await fs.readFile(archive), original);
+
+    assertSuccess(await invoke('--install', tempRoot));
+    const installed = await fs.readFile(archive);
+    result = await invoke('--status', tempRoot); assertSuccess(result);
+    assert.equal(result.report.status.ModInstalled, true);
+    assert.equal(result.report.status.BackupVerified, true);
+    assert.equal(result.report.status.InstalledModVersion, modVersion);
+    assert.deepEqual(await fs.readFile(archive), installed);
+
+    // A vendor update replaces the entry while stale mod/backup remain.
+    await fs.writeFile(archive, original);
+    result = await invoke('--status', tempRoot); assertSuccess(result);
+    assert.equal(result.report.status.ModInstalled, false);
+    assert.equal(result.report.status.BackupVerified, false);
+    assert.equal(result.report.status.InstalledModVersion, null);
+    assert.equal(result.report.status.NeedsRepatch, true);
+    assert.deepEqual(await fs.readFile(archive), original);
+
+    const journal = path.join(resources, '.lolkamod-transaction.json');
+    await fs.writeFile(journal, '{"test":"inspection only"}');
+    result = await invoke('--status', tempRoot); assertSuccess(result);
+    assert.equal(result.report.status.RecoveryPending, true);
+    assert.equal(result.report.status.ModInstalled, false);
+    assert.equal(result.report.status.BackupVerified, false);
+    assert.equal(await fs.readFile(journal, 'utf8'), '{"test":"inspection only"}');
+    assert.deepEqual(await fs.readFile(archive), original);
+  });
+});
+
+test('structured status refuses corrupt backup instead of claiming an installed mod', { skip: operationSkipReason }, async () => {
+  await withFixture(async ({ tempRoot, resources, archive }) => {
+    assertSuccess(await invoke('--install', tempRoot));
+    const installed = await fs.readFile(archive);
+    await fs.writeFile(path.join(resources, '_app.asar'), 'corrupt');
+    const result = await invoke('--status', tempRoot);
+    assertFailure(result, /повреждена/);
+    assert.equal(result.report.status, null);
+    assert.deepEqual(await fs.readFile(archive), installed);
+    assert.equal(await fs.readFile(path.join(resources, '_app.asar'), 'utf8'), 'corrupt');
+  });
+});
+
 test('install and uninstall leave the separate user profile and settings sentinel untouched', { skip: operationSkipReason }, async () => {
   await withFixture(async ({ tempRoot, userData }) => {
     const sentinel = path.join(userData, 'settings.json');

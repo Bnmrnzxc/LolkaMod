@@ -1,5 +1,7 @@
 import { optionalContracts } from "./compatible-quality";
+import { BRAND_HEX_PATH, BRAND_CUTOUTS } from "../shared/brand";
 
+const sidebarIconFind = 'const ue=I$n[Me.id];return s.jsxs(su.SidebarItem,{active:a===Me.id,onClick:Ee=>{if(a!==Me.id){if(C){Ee.preventDefault(),_();return}E(null),l(Me.id)}},children:[ue&&s.jsx(ue,{size:20}),Me.title]},Me.id)';
 const settingsSpecs = [
   {find:'{title:"groups.app",items:["appearance","languageTime","notifications","audio","keybindings","overlay","activities","windows","advanced"]}',replace:'{title:"groups.app",items:["appearance","lolkamod","languageTime","notifications","audio","keybindings","overlay","activities","windows","advanced"]}'},
   {find:'const q=v.useMemo(()=>D$n(M),[M]),J=q.length>0'},
@@ -9,6 +11,7 @@ const settingsSpecs = [
   {find:'cn=ss((e,t)=>({openModals:[],settingsActiveTab:Ao.Profiles,settingsAudioVideoTab:Ag.Audio'},
   {find:'setSettingsActiveTab:n=>e({settingsActiveTab:n})'},
   {find:'return n===_e.Settings&&(o.settingsActiveTab=Ao.Profiles,o.settingsAudioVideoTab=Ag.Audio'},
+  {find:sidebarIconFind,replace:sidebarIconFind.replace('const ue=I$n[Me.id]', 'const ue=Me.id==="lolkamod"?__lmHostBrand:I$n[Me.id]')},
 ];
 
 // Windows desktop source chooser is opened before the old stream is stopped. Cancel is harmless.
@@ -60,6 +63,7 @@ export function transformHostFeatures(source:string, hash:string, testKnown=fals
     const testReference=test?test.rebind(`,...(globalThis.LolkaModNative?.diagnostics().testMode?{test:{mount:container=>{const root=Eje.createRoot(container);root.render(s.jsx(vPe,{i18n:At,children:s.jsx(P$n,{isOpen:true,onClose:()=>{}})}));return()=>root.unmount()},mountChrome:(container,props)=>{const root=Eje.createRoot(container);root.render(s.jsxs("div",{style:{position:"fixed",bottom:20,left:60,width:100,height:50,overflow:"hidden",transform:"translateZ(0)"},children:[typeof __lmHostToolbar==="function"&&s.jsx(__lmHostToolbar,props),typeof __lmHostStreamTools==="function"&&s.jsx(__lmHostStreamTools,props)]}));return()=>root.unmount()}}}:{})`):"";
     body=settings.body+settings.rebind(`
 function __lmHostSettings(){const ref=v.useRef(null);v.useEffect(()=>globalThis.LolkaMod?.mountSettings(ref.current),[]);return s.jsx("div",{ref,"data-lolkamod-host-settings":true})}
+function __lmHostBrand(){const id="lolkamod-host-brand-"+v.useId();return s.jsxs("svg",{width:24,height:24,viewBox:"0 0 1024 1024",fill:"currentColor",style:{flexShrink:0},"aria-hidden":true,focusable:false,"data-lolkamod-brand":"sidebar",children:[s.jsx("defs",{children:s.jsxs("mask",{id,maskUnits:"userSpaceOnUse",x:0,y:0,width:1024,height:1024,children:[s.jsx("rect",{width:1024,height:1024,fill:"white"}),...${JSON.stringify(BRAND_CUTOUTS.sidebar.paths)}.map(d=>s.jsx("path",{d,fill:"none",stroke:"black",strokeWidth:${BRAND_CUTOUTS.sidebar.width},strokeLinecap:"round",strokeLinejoin:"round"},d))]})}),s.jsx("path",{d:${JSON.stringify(BRAND_HEX_PATH)},mask:"url(#"+id+")"})]})}
 ;globalThis.LolkaMod?.modules.register("HostSettings",Object.freeze({open:()=>{cn.getState().setSettingsActiveTab("lolkamod");cn.getState().openModal(_e.Settings)}${testReference}}),"${hash}");
 `);
     features.settings="available";

@@ -10,8 +10,8 @@ async function sourceModule(name) {
     format: 'esm', platform: 'node', target: 'es2022', write: false, logLevel: 'silent' });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
-const [themes, indicators] = await Promise.all([
-  sourceModule('theme-manager'), sourceModule('stream-indicator'),
+const [themes, indicators, brand] = await Promise.all([
+  sourceModule('theme-manager'), sourceModule('stream-indicator'), sourceModule('../shared/brand'),
 ]);
 
 class Events {
@@ -59,6 +59,30 @@ const owned = (doc, id) => [...doc.head.children, ...doc.body.children].filter(e
 const anchor = doc => { const element = doc.createElement('span'); element.className = 'host-stream-heading'; doc.body.append(element); return element; };
 const icon = container => container.children.find(element => element.getAttribute('data-lolkamod-owned') === 'stream-indicator');
 const popup = doc => doc.body.children.find(element => element.getAttribute('data-lolkamod-owned') === 'stream-tooltip');
+
+test('inline LM marks keep their cutouts and mask IDs independent across repeated panels', () => {
+  const doc = new Document(), ids = new Set();
+  for (let index = 0; index < 100; index++) {
+    const variant = index % 2 ? 'sidebar' : 'regular';
+    const svg = brand.createBrandMark(doc, variant, variant === 'sidebar' ? 24 : 38);
+    const [defs, hex] = svg.children, mask = defs.children[0], id = mask.getAttribute('id');
+    assert.equal(ids.has(id), false); ids.add(id);
+    assert.equal(svg.getAttribute('data-lolkamod-brand'), variant);
+    assert.equal(svg.getAttribute('aria-hidden'), 'true');
+    assert.equal(hex.getAttribute('mask'), `url(#${id})`);
+    assert.equal(hex.getAttribute('fill'), 'currentColor', 'native menu colors come from the surrounding tab');
+    assert.equal(mask.getAttribute('maskUnits'), 'userSpaceOnUse');
+    assert.equal(mask.children[0].getAttribute('fill'), 'white');
+    assert.equal(mask.children.length, 3, 'LM cutouts have two independent, round-ended paths');
+    for (const path of mask.children.slice(1)) {
+      assert.equal(path.getAttribute('fill'), 'none'); assert.equal(path.getAttribute('stroke'), 'black');
+      assert.equal(path.getAttribute('stroke-width'), String(brand.BRAND_CUTOUTS[variant].width));
+      assert.equal(path.getAttribute('stroke-linecap'), 'round');
+    }
+    doc.body.append(svg); svg.remove();
+  }
+  assert.equal(ids.size, 100); assert.equal(doc.body.children.length, 0);
+});
 
 function snapshot(overrides = {}) {
   return {

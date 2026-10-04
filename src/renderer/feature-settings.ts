@@ -19,7 +19,7 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
   const signal = events.signal;
   const root = doc.createElement("div"); root.className = "feature-settings";
   const style = doc.createElement("style");
-  style.textContent = `.feature-settings{display:grid;gap:12px}.feature-settings label{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px;border:1px solid #3b394c;border-radius:10px}.feature-settings select,.feature-settings button{font:inherit;color:inherit;background:#252332;border:1px solid #555066;border-radius:8px;padding:8px;cursor:pointer}.feature-settings input{accent-color:#8b5cf6}.feature-settings .feature-actions{display:flex;gap:8px;flex-wrap:wrap}.feature-settings p{margin:0;color:#bdb6cd;font-size:12px}.feature-settings [hidden]{display:none}`;
+  style.textContent = `.feature-settings{display:grid;gap:12px}.feature-settings label{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px;border:1px solid var(--color-border-primary,#3b394c);border-radius:10px}.feature-settings select,.feature-settings button{font:inherit;color:inherit;background:var(--color-bg-input,#252332);border:1px solid var(--color-border-secondary,#555066);border-radius:8px;padding:8px;cursor:pointer}.feature-settings input{accent-color:var(--color-brand-primary,#65b9dc)}.feature-settings .feature-actions{display:flex;gap:8px;flex-wrap:wrap}.feature-settings p{margin:0;color:var(--color-text-secondary,#bdb6cd);font-size:12px}.feature-settings [hidden]{display:none}`;
   root.append(style);
   const status = doc.createElement("p"); status.setAttribute("role", "status");
   const checks = new Map<keyof Settings, HTMLInputElement>();

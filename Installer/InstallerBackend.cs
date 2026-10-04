@@ -13,7 +13,7 @@ namespace LolkaModInstaller
 {
     public static class InstallerBackend
     {
-        public const string ModVersion = "0.5.1";
+        public const string ModVersion = "0.5.2";
         // Migration hint only; schema 2 stores the exact hash of each validated host.
         private const string OriginalHash = "fd94ecec264d7d7a56a0b5d1bb5ac1e416b6c9a4ee2d171b3704b0b72f0260a8";
         private const string HostMain = "dist-js/main.js", HostPreload = "dist-js/preload.js";
@@ -274,20 +274,38 @@ namespace LolkaModInstaller
             }
             catch { return "Отчёт интерфейса недоступен. Запустите Lolka для новой проверки."; }
         }
-        public static string Status(string installation)
+        public sealed class InstallStatus
+        {
+            public bool ClientFound { get; internal set; }
+            public bool ModInstalled { get; internal set; }
+            public bool BackupVerified { get; internal set; }
+            public bool NeedsRepatch { get; internal set; }
+            public bool RecoveryPending { get; internal set; }
+            public string HostVersion { get; internal set; }
+            public string InstalledModVersion { get; internal set; }
+            public string Message { get; internal set; }
+        }
+        // Inspect once for both the CLI and UI. Card states must never be inferred from display text.
+        public static InstallStatus InspectStatus(string installation)
         {
             var layout = new Layout(installation);
-            if (File.Exists(layout.Journal)) return "Предыдущая операция прервана. Закройте Lolka и повторите установку: будет выполнен откат незавершённой операции.";
+            if (File.Exists(layout.Journal)) return new InstallStatus { RecoveryPending = true,
+                Message = "Предыдущая операция прервана. Закройте Lolka и повторите установку: будет выполнен откат незавершённой операции." };
             byte[] current = File.ReadAllBytes(layout.Archive); var host = TryHost(current); var manifest = Manifest(layout);
             if (host != null)
             {
-                string action = Directory.Exists(layout.Mod) || File.Exists(layout.Backup) ? "Lolka обновлена или мод снят. Нажмите «Установить / обновить»." : "Мод не установлен.";
-                return "Lolka " + host.Version + ": desktop-структура совместима. " + action + "\r\nСовместимость интерфейса проверяется при запуске.";
+                bool needsRepatch = Directory.Exists(layout.Mod) || File.Exists(layout.Backup);
+                string action = needsRepatch ? "Lolka обновлена или мод снят. Нажмите «Установить / обновить»." : "Мод не установлен.";
+                return new InstallStatus { ClientFound = true, HostVersion = host.Version, NeedsRepatch = needsRepatch,
+                    Message = "Lolka " + host.Version + ": desktop-структура совместима. " + action + "\r\nСовместимость интерфейса проверяется при запуске." };
             }
             if (manifest == null || Hash(current) != StringValue(manifest, "shimHash")) throw new IOException("ASAR или manifest изменены. Неизвестные файлы сохранены; переустановите Lolka.");
             VerifyBackup(layout, manifest);
-            return "Установлен LolkaMod " + StringValue(manifest, "modVersion") + " для Lolka " + StringValue(manifest, "hostVersion") + ". Backup проверен.\r\n" + CompatibilityStatus(layout);
+            return new InstallStatus { ClientFound = true, ModInstalled = true, BackupVerified = true,
+                HostVersion = StringValue(manifest, "hostVersion"), InstalledModVersion = StringValue(manifest, "modVersion"),
+                Message = "Установлен LolkaMod " + StringValue(manifest, "modVersion") + " для Lolka " + StringValue(manifest, "hostVersion") + ". Backup проверен.\r\n" + CompatibilityStatus(layout) };
         }
+        public static string Status(string installation) { return InspectStatus(installation).Message; }
         public static string Install(string installation) { return Install(installation, null); }
         public static string Install(string installation, string testUserData)
         {

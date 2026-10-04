@@ -1,5 +1,5 @@
 import type { StreamProfile } from "./streams";
-export const VERSION = "0.5.1";
+export const VERSION = "0.5.2";
 export const MAX_CSS_LENGTH = 128 * 1024;
 export type ThemeId = "native" | "graphite" | "amoled" | "contrast";
 export interface Settings { schemaVersion: 1; enabled: boolean; customCss: string; qualityEnabled: boolean; profile: StreamProfile;

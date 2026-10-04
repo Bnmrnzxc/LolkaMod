@@ -24,9 +24,10 @@ namespace LolkaModInstaller
             {
                 if (args.Length < 2) throw new ArgumentException("Usage: --status|--install|--uninstall|--repair <Lolka folder> [--report <JSON>]");
                 string result;
+                InstallerBackend.InstallStatus status = null;
                 switch (args[0])
                 {
-                    case "--status": result = InstallerBackend.Status(args[1]); break;
+                    case "--status": status = InstallerBackend.InspectStatus(args[1]); result = status.Message; break;
                     case "--install":
                         string profile = null;
                         for (int i = 2; i + 1 < args.Length; i++) if (args[i] == "--test-user-data") profile = args[i + 1];
@@ -36,8 +37,12 @@ namespace LolkaModInstaller
                     case "--preview":
                         // Offscreen rendering for release QA; no window is shown or focused.
                         Application.EnableVisualStyles();
+                        Application.SetCompatibleTextRenderingDefault(false);
                         using (var form = new MainForm())
                         {
+                            string previewInstallation = null;
+                            for (int i = 2; i + 1 < args.Length; i++) if (args[i] == "--installation") previewInstallation = args[i + 1];
+                            if (previewInstallation != null) form.PreparePreview(previewInstallation);
                             var create = typeof(Control).GetMethod("CreateControl", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
                                 null, new[] { typeof(bool) }, null);
                             if (create == null) throw new InvalidOperationException("Offscreen control creation unavailable.");
@@ -51,14 +56,14 @@ namespace LolkaModInstaller
                         result = "Offscreen installer preview saved."; break;
                     default: throw new ArgumentException("Unknown operation");
                 }
-                WriteReport(report, true, result);
+                WriteReport(report, true, result, status);
                 return 0;
             }
             catch (Exception error) { WriteReport(report, false, error.Message); return 1; }
         }
-        private static void WriteReport(string path, bool ok, string result)
+        private static void WriteReport(string path, bool ok, string result, InstallerBackend.InstallStatus status = null)
         {
-            string json = new JavaScriptSerializer().Serialize(new { ok = ok, result = result, version = InstallerBackend.ModVersion });
+            string json = new JavaScriptSerializer().Serialize(new { ok = ok, result = result, version = InstallerBackend.ModVersion, status = status });
             if (path != null) File.WriteAllText(Path.GetFullPath(path), json, new UTF8Encoding(false));
             else Console.WriteLine(json);
         }
