@@ -1,0 +1,14 @@
+node_modules/
+release/
+research/
+AGENTS.md
+.agents/
+RESEARCH_REPORT.md
+dist/
+.runtime/
+.staging/
+research/original/
+research/app-unpacked/
+research/public-frontend/
+research/obsidian-backups/
+*.log

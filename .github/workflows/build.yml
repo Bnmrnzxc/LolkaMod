@@ -1,0 +1,28 @@
+name: Build experimental Windows installer
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build:installer
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LolkaMod-experimental-windows
+          path: |
+            release/*.exe
+            release/*.sha256
+            README.md
+            docs/stream-test.md

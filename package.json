@@ -1,0 +1,23 @@
+{
+  "name": "lolkamod",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Desktop plugin framework prototype for Lolka",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "build:installer": "npm run build && node scripts/build-installer.mjs",
+    "fetch:frontend": "node scripts/fetch-frontend.mjs",
+    "package:release": "node scripts/package-release.mjs",
+    "install:desktop": "node scripts/install.mjs install",
+    "uninstall:desktop": "node scripts/install.mjs uninstall"
+  },
+  "devDependencies": {
+    "@electron/asar": "4.3.1",
+    "@types/node": "22.15.30",
+    "esbuild": "0.25.5",
+    "typescript": "5.8.3"
+  }
+}
