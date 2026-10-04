@@ -1,8 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import Module from "node:module";
-import { DEFAULT_SETTINGS, VERSION, validateSettings } from "../shared/settings";
+import { VERSION } from "../shared/settings";
 import { enableSourceAdapter } from "./source-adapter";
+import { createSettingsStore } from "./settings-store";
+import { createUpdateService } from "./update-service";
+import { RELEASES_URL } from "../shared/updates";
 const electron = require("electron");
 const { app, ipcMain } = electron;
 const resources = process.resourcesPath;
@@ -35,11 +38,9 @@ function evidence() {
   fs.writeFileSync(path.join(modDir, "runtime.json"), JSON.stringify(metadata, null, 2));
 }
 const settingsDir = path.join(app.getPath("userData"), "lolkamod");
-const settingsFile = path.join(settingsDir, "settings.json");
-function readSettings() {
-  try { return validateSettings(JSON.parse(fs.readFileSync(settingsFile, "utf8"))); }
-  catch { return { ...DEFAULT_SETTINGS }; }
-}
+const settingsStore = createSettingsStore(settingsDir);
+const updates = createUpdateService(VERSION);
+const readSettings = settingsStore.read;
 function allowed(event: any) {
   // An iframe or another origin cannot invoke a privileged mod endpoint.
   try { return event.senderFrame === event.sender.mainFrame &&
@@ -52,17 +53,26 @@ if (!disabled) {
   });
   ipcMain.handle("lolkamod:settings:write", (event: any, value: unknown) => {
     if (!allowed(event)) throw new Error("Forbidden sender");
-    const settings = validateSettings(value);
-    fs.mkdirSync(settingsDir, { recursive: true });
-    const temp = settingsFile + ".tmp";
-    fs.writeFileSync(temp, JSON.stringify(settings), { encoding: "utf8", mode: 0o600 });
-    fs.renameSync(temp, settingsFile);
+    const settings = settingsStore.write(value);
     metadata.settingsWrites = Number(metadata.settingsWrites) + 1; evidence();
     return settings;
   });
   ipcMain.on("lolkamod:diagnostics", (event: any) => {
-    event.returnValue = allowed(event) ? { testMode, sourceAdapter: adapterReports.get(event.sender.id) ?? { status: "not-started" } } : null;
+    event.returnValue = allowed(event) ? { testMode, settingsStorage: settingsStore.status(), sourceAdapter: adapterReports.get(event.sender.id) ?? { status: "not-started" } } : null;
   });
+  ipcMain.handle("lolkamod:settings:reset", (event: any) => {
+    if (!allowed(event)) throw new Error("Forbidden sender");
+    return settingsStore.reset();
+  });
+  ipcMain.handle("lolkamod:updates:check", (event: any) => {
+    if (!allowed(event)) throw new Error("Forbidden sender");
+    return updates.check();
+  });
+  ipcMain.handle("lolkamod:updates:open", (event: any) => {
+    if (!allowed(event)) throw new Error("Forbidden sender");
+    return electron.shell.openExternal(updates.status().url ?? RELEASES_URL);
+  });
+  app.on("before-quit", () => updates.stop());
 }
 
 // Retain the host updater object and events, but prevent replacing this prototype.

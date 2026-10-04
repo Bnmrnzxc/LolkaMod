@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { CDP } from './cdp.mjs';
 
+const version=JSON.parse(await fs.readFile('package.json','utf8')).version;
 const cdp = await CDP.connect();
 let evidence;
 try {
@@ -33,6 +34,7 @@ try {
     const source = canvas.captureStream(60);
     Object.defineProperty(devices,'getDisplayMedia',{configurable:true,writable:true,value:async()=>source});
     api.start();
+    await api.saveSettings({indicatorEnabled:true,indicatorDetailed:true});
     const nativeConstraints=stock.test.constraints();
     const stream = await devices.getDisplayMedia({video:{frameRate:stock.test.profile().fps},audio:false});
     const track = stream.getVideoTracks()[0];
@@ -66,7 +68,7 @@ try {
       encodings:localSender.getParameters().encodings.map(e=>({maxBitrate:e.maxBitrate,maxFramerate:e.maxFramerate,scaleResolutionDownBy:e.scaleResolutionDownBy})),
       nativeCapabilities:api.modules.get('ScreenShareSettings')?.capabilities()??null};
   })()`);
-  assert.equal(setup.version,'0.3.0');
+  assert.equal(setup.version,version);
   assert.equal(setup.capture.width,2560); assert.equal(setup.capture.height,1440);
   assert.equal(setup.encodings[0].maxBitrate,16_000_000);
   assert.equal(setup.encodings[0].maxFramerate,60);
@@ -80,16 +82,18 @@ try {
     const incoming=snapshot.diagnostics.streams.find(s=>s.direction==='inbound');
     if(out?.encoded?.width===2560&&out?.encoded?.height===1440&&incoming?.decoded?.width===2560&&incoming?.decoded?.height===1440&&out.bitrateKbps>0&&incoming.bitrateKbps>0) {
       evidence={status:'PASS',test:'native-selected-profile-synthetic-canvas-local-WebRTC',version:setup.version,setup,
-        samples:observations.length,observedAt:new Date().toISOString(),outbound:out,inbound:incoming,
+        samples:observations.length,observedAt:new Date().toISOString(),outbound:out,inbound:incoming,indicator:snapshot.indicator,
         limit:'This isolated stock-profile canvas/loopback test does not prove OS screen capture, audio, Lolka SFU delivery or stable real-world 60 FPS.'};
       break;
     }
   }
   if(!evidence) {
     const states=await cdp.evaluate(`({sender:window.__lmSynthetic?.senderPeer.connectionState,receiver:window.__lmSynthetic?.receiverPeer.connectionState})`);
-    await fs.writeFile('.runtime/evidence/stream-failed-0.3.0.json',JSON.stringify({status:'FAIL',setup,states,last:observations.at(-1)},null,2));
+    await fs.writeFile(`.runtime/evidence/stream-failed-${version}.json`,JSON.stringify({status:'FAIL',setup,states,last:observations.at(-1)},null,2));
   }
   assert.ok(evidence,'No matching encoded/decoded 2560×1440 frames observed within 12 seconds');
+  assert.equal(evidence.indicator.status,'live');
+  assert.ok(evidence.indicator.cards.some(card=>card.direction==='outbound'&&card.summary.includes('2560')));
 } finally {
   const cleanup = await cdp.evaluate(`(async()=>{
     const data=window.__lmSynthetic;if(!data)return{cleaned:false};
@@ -106,7 +110,7 @@ try {
   if(evidence) {
     evidence.cleanup=cleanup;
     assert.equal(cleanup.hostResourcesLeftAliveByStop,true); assert.equal(cleanup.hooksRestored,true);assert.equal(cleanup.noRemainingStreams,true);
-    await fs.writeFile('.runtime/evidence/stream-0.3.0.json',JSON.stringify(evidence,null,2));
+    await fs.writeFile(`.runtime/evidence/stream-${version}.json`,JSON.stringify(evidence,null,2));
     console.log(JSON.stringify(evidence));
   }
   cdp.close();

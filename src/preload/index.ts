@@ -6,6 +6,9 @@ if (process.isMainFrame && location.origin === "https://lolka.app") {
   contextBridge.exposeInMainWorld("LolkaModNative", {
     readSettings: () => ipcRenderer.sendSync("lolkamod:settings:read"),
     writeSettings: (settings: unknown) => ipcRenderer.invoke("lolkamod:settings:write", settings),
+    resetSettings: () => ipcRenderer.invoke("lolkamod:settings:reset"),
+    checkUpdates: () => ipcRenderer.invoke("lolkamod:updates:check"),
+    openRelease: () => ipcRenderer.invoke("lolkamod:updates:open"),
     diagnostics: () => ({ version: VERSION, electron: process.versions.electron,
       sandboxed: process.sandboxed, contextIsolated: process.contextIsolated,
       clipboardAvailable: typeof clipboard?.readText === "function" && typeof clipboard?.writeText === "function",

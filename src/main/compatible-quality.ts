@@ -1,4 +1,4 @@
-import { parse, tokenizer, type Token as AcornToken } from "acorn";
+import { parse, tokenizer, tokTypes, type Token as AcornToken } from "acorn";
 import { nativeQualityPatches, type SourcePatch } from "./native-quality-patches";
 
 type Node = any;
@@ -15,8 +15,17 @@ function tokens(source: string): Token[] {
   return normalizeTokens([...tokenizer(source, options)]);
 }
 function normalizeTokens(list: Token[]): Token[] {
+  const canonical:Token[]=[];
+  for(let i=0;i<list.length;i++){
+    if(list[i].type.label==="!/~"&&list[i].value==="!"&&list[i+1]?.type.label==="num"&&(list[i+1].value===0||list[i+1].value===1)){
+      const value=list[i+1].value===0;
+      canonical.push({...list[i],type:value?tokTypes._true:tokTypes._false,value:value?"true":"false",end:list[i+1].end});i++;
+    }else canonical.push(list[i]);
+  }
+  list=canonical;
   const skip = new Set<number>();
   for (let i = 0; i + 3 < list.length; i++) if (list[i].type.label === "(" && list[i + 1].type.label === "name" && list[i + 2].type.label === ")" && list[i + 3].type.label === "=>") { skip.add(i); skip.add(i + 2); }
+  for(let i=0;i+3<list.length;i++)if(list[i].type.label==="new"&&list[i+1].type.label==="name"&&list[i+2].type.label==="("&&list[i+3].type.label===")"){skip.add(i+2);skip.add(i+3);}
   return list.filter((token, index) => !skip.has(index) && token.type.label !== ";" && token.type.label !== "eof");
 }
 function variableToken(list: Token[], index: number) {
@@ -70,6 +79,26 @@ function rebind(source: string, binding: Binding) {
   }
   return result;
 }
+// Optional host groups are independent of the quality group. Every contract must match once.
+export function optionalContracts(source: string, specs: {find:string; replace?:string}[], globals:string[]) {
+  const all=tokens(source), index=indexTokens(all), shared:Binding={};
+  const edits:{start:number;end:number;value:string;binding:Binding}[]=[];
+  for(const spec of specs){
+    const matches=findMatches(all,spec.find,index);
+    if(matches.length!==1) return null;
+    const match=matches[0];
+    for(const name of globals) if(match.binding[name]){
+      if(shared[name] && shared[name]!==match.binding[name]) return null;
+      shared[name]=match.binding[name];
+    }
+    if(spec.replace!==undefined) edits.push({start:match.start,end:match.end,value:spec.replace,binding:match.binding});
+  }
+  for(const name of globals) if(!shared[name]) return null;
+  let body=source;
+  for(const edit of edits.sort((a,b)=>b.start-a.start)) body=body.slice(0,edit.start)+rebind(edit.value,{...shared,...edit.binding})+body.slice(edit.end);
+  return {body,binding:shared,rebind:(value:string)=>rebind(value,shared)};
+}
+export function contractMatchCounts(source:string,specs:{find:string}[]){const all=tokens(source),index=indexTokens(all);return specs.map(spec=>({find:spec.find,count:findMatches(all,spec.find,index).length}));}
 function walk(root: Node, visit: (node: Node, scope: Node) => void, scope: Node = root) {
   if (!root || typeof root !== "object") return;
   if (root.type === "FunctionDeclaration" || root.type === "FunctionExpression" || root.type === "ArrowFunctionExpression") scope = root;

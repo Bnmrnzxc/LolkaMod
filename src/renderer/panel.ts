@@ -1,4 +1,5 @@
 import { mountStreamControls, type StreamControlsOptions } from "./stream-panel";
+import { mountFeatureSettings, type FeatureSettingsOptions } from "./feature-settings";
 export type PanelSettings = {
   enabled: boolean;
   customCss: string;
@@ -12,6 +13,8 @@ export type PanelOptions = {
   onClose?: () => void;
   streams?: StreamControlsOptions;
   showLauncher?: boolean;
+  container?: HTMLElement;
+  features?: FeatureSettingsOptions;
 };
 
 const HOST_ID = "lolkamod-panel";
@@ -188,17 +191,18 @@ function makeElement<K extends keyof HTMLElementTagNameMap>(
 
 export function mountPanel(options: PanelOptions): () => void {
   const document = globalThis.document;
-  activeDisposer?.();
-  const previous = document.getElementById(HOST_ID);
+  if (!options.container) activeDisposer?.();
+  const previous = options.container ? null : document.getElementById(HOST_ID);
   if (previous?.getAttribute(OWNER_ATTRIBUTE) === "true") previous.remove();
 
   const host = makeElement(document, "div");
-  host.id = HOST_ID;
+  host.id = options.container ? "lolkamod-embedded-settings" : HOST_ID;
   host.setAttribute(OWNER_ATTRIBUTE, "true");
   const shadow = host.attachShadow({ mode: "open" });
 
   const style = makeElement(document, "style");
   style.textContent = PANEL_STYLES;
+  if(options.container) style.textContent += `.layer,.panel{position:static;width:100%;max-height:none;pointer-events:auto}.layer{display:block}.panel{box-shadow:none;background:transparent;padding:8px;border:0}.close,.launcher{display:none}`;
   const layer = makeElement(document, "div", "layer");
 
   const launcher = makeElement(document, "button", "launcher");
@@ -213,7 +217,7 @@ export function mountPanel(options: PanelOptions): () => void {
   const panel = makeElement(document, "section", "panel");
   panel.id = "lolkamod-settings";
   panel.setAttribute("aria-label", "Настройки LolkaMod");
-  panel.hidden = true;
+  panel.hidden = !options.container;
 
   const header = makeElement(document, "header", "header");
   const titleRow = makeElement(document, "div", "title-row");
@@ -224,7 +228,7 @@ export function mountPanel(options: PanelOptions): () => void {
   const heading = makeElement(document, "h1");
   heading.textContent = "LolkaMod";
   const version = makeElement(document, "div", "version");
-  version.textContent = `Версия ${options.version} · Desktop prototype`;
+  version.textContent = `Версия ${options.version}`;
   headingGroup.append(heading, version);
   titleRow.append(brand, headingGroup);
 
@@ -263,7 +267,7 @@ export function mountPanel(options: PanelOptions): () => void {
   editor.setAttribute("aria-describedby", "lolkamod-css-hint");
   const hint = makeElement(document, "p", "hint");
   hint.id = "lolkamod-css-hint";
-  hint.textContent = "Изменения вступят в силу после сохранения. Автообновление Lolka приостановлено на время установки прототипа.";
+  hint.textContent = "CSS применяется после сохранения. Темы сохраняются автоматически. Обновление мода устанавливается при закрытой Lolka.";
   editorGroup.append(editorLabel, editor, hint);
 
   const actions = makeElement(document, "div", "actions");
@@ -287,6 +291,9 @@ export function mountPanel(options: PanelOptions): () => void {
   diagnosticsOutput.setAttribute("aria-live", "polite");
 
   panel.append(header, settingRow, editorGroup, actions, saveStatus, diagnosticsOutput);
+  const featureContainer=makeElement(document,"div");
+  settingRow.before(featureContainer);
+  const featureDispose=options.features?mountFeatureSettings(featureContainer,options.features):undefined;
   const streamContainer = makeElement(document, "div");
   panel.append(streamContainer);
   const streamDispose = options.streams ? mountStreamControls(streamContainer, options.streams) : undefined;
@@ -296,6 +303,11 @@ export function mountPanel(options: PanelOptions): () => void {
   const events = new AbortController();
   const eventOptions = { signal: events.signal };
   let disposed = false;
+  const settingsUnsubscribe=options.features?.subscribe(()=>{
+    const next=options.features!.settings();
+    enabledInput.checked=next.enabled;
+    if(shadow.activeElement!==editor) editor.value=next.customCss;
+  });
 
   const setOpen = (open: boolean) => {
     panel.hidden = !open;
@@ -339,6 +351,7 @@ export function mountPanel(options: PanelOptions): () => void {
     diagnosticsOutput.hidden = false;
   }, eventOptions);
   document.addEventListener("keydown", (event) => {
+    if(options.container)return;
     if (event.key === "Escape") {
       close();
       return;
@@ -351,16 +364,18 @@ export function mountPanel(options: PanelOptions): () => void {
     else close();
   }, eventOptions);
 
-  document.body.append(host);
+  (options.container ?? document.body).append(host);
 
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     events.abort();
     streamDispose?.();
+    featureDispose?.();
+    settingsUnsubscribe?.();
     host.remove();
     if (activeDisposer === dispose) activeDisposer = undefined;
   };
-  activeDisposer = dispose;
+  if(!options.container) activeDisposer = dispose;
   return dispose;
 }

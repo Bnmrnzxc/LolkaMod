@@ -285,7 +285,10 @@ test('unsupported APIs and failing statistics remain harmless', async () => {
   await withWindow({ navigator: { mediaDevices: {} } }, async () => {
     const diagnostics = installStreamDiagnostics();
     await assert.doesNotReject(diagnostics.sample());
-    assert.deepEqual(diagnostics.snapshot(), {
+    const snapshot=diagnostics.snapshot();
+    assert.ok(Number.isFinite(snapshot.sampledAt));
+    assert.deepEqual(snapshot, {
+      sampledAt:snapshot.sampledAt,
       state: { connections: 0, displayCapture: 0, samples: 1, noStream: true },
       streams: [],
     });

@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { applyPatchGroup, nativeQualityPatches, nativeProfileReference } from "./native-quality-patches";
-import { compatibleQuality, validateModule } from "./compatible-quality";
+import { compatibleQuality, validateModule, optionalContracts } from "./compatible-quality";
+import { transformHostFeatures } from "./host-features";
 export { applyPatchGroup, nativeQualityPatches, nativeProfileReference } from "./native-quality-patches";
 export const ENTRY_HASH = "0e3f6bfad2a2ca4be4a7eb435a54c2c481cfdd9a2cdadb931042a483dd0c10a2";
-function adapterReference(binding: Record<string, string>, hash: string, known: boolean) {
+function adapterReference(binding: Record<string, string>, hash: string, known: boolean, structuralPicker="") {
   const active = binding.Lyt ? `${binding.Lyt}()` : "null";
   const pickerTest = known ? `mountPicker: (container, onSelect) => {
       const root = Eje.createRoot(container);
@@ -12,7 +13,7 @@ function adapterReference(binding: Record<string, string>, hash: string, known: 
         onSourceSelect:onSelect, onCancel:()=>{},
       })}));
       return () => root.unmount();
-    },` : "";
+    },` : structuralPicker;
   return nativeProfileReference + `
 ;globalThis.LolkaMod?.modules.register("ScreenShareSettings", Object.freeze({
   snapshot: () => ({ bitrateMbps: Number((${active})?.bitrate || 0) / 1e6,
@@ -56,17 +57,26 @@ export function transformEntry(body: string) {
   // The exact known output is syntax-checked against its fixture during build.
   if (hash === ENTRY_HASH) {
     const known = applyPatchGroup(body, nativeQualityPatches);
-    if (known.changed) return { status: "transformed", hash, body: known.body + sourceAdapterReference, changed: true,
-      patches: known.applied, compatibility: "known", reason: "Проверенная сборка интерфейса" };
+    if (known.changed) {
+      const host=transformHostFeatures(known.body,hash,true);
+      return { status: "transformed", hash, body: host.body + sourceAdapterReference, changed: true,
+        features:host.features, patches: known.applied, compatibility: "known", reason: "Проверенная сборка интерфейса" };
+    }
   }
   if (cachedStructural?.hash === hash) return cachedStructural;
   const group = compatibleQuality(body);
   if (!group.changed) return { ...group, hash };
-  const result = group.body + adapterReference(group.binding, hash, hash === ENTRY_HASH);
+  const host=transformHostFeatures(group.body,hash,hash===ENTRY_HASH);
+  const testPicker=optionalContracts(body,[
+    {find:'ztr=({sources:e,onSourceSelect:t,onCameraSelect:n,onCancel:r,serverLevel:o=0,waylandMode:a=!1,native:l,className:c,...u})=>{const{t:d}=Xe(["voice","common"])'},
+    {find:'Eje.createRoot(document.getElementById("root")).render(s.jsx(Var,{children:s.jsx(vPe,{i18n:At'},
+  ],["ztr","Eje","s","vPe","At"]);
+  const picker=testPicker?.rebind(`mountPicker:(container,onSelect)=>{const root=Eje.createRoot(container);root.render(s.jsx(vPe,{i18n:At,children:s.jsx(ztr,{sources:[{id:"window:lolkamod-test",name:"LolkaMod synthetic source"}],serverLevel:0,onSourceSelect:onSelect,onCancel:()=>{}})}));return()=>root.unmount()},`)??"";
+  const result = host.body + adapterReference(group.binding, hash, hash === ENTRY_HASH,picker);
   try { validateModule(result); }
   catch { return { status: "syntax-error", reason: "Изменённый интерфейс не проходит проверку синтаксиса", hash, body, changed: false, patches: [] as string[] }; }
   const transformed = { status: "transformed", hash, body: result, changed: true as const, patches: group.patches,
-    compatibility: hash === ENTRY_HASH ? "known" : "structural", reason: group.reason, binding: group.binding };
+    features:host.features, compatibility: hash === ENTRY_HASH ? "known" : "structural", reason: group.reason, binding: group.binding };
   cachedStructural = transformed;
   return transformed;
 }
@@ -94,6 +104,7 @@ export async function enableSourceAdapter(webContents: any, report: (result: Rec
         if (!/\/index[-.]/.test(url.pathname) && !(body.includes("getDisplayMedia") && body.includes("screenShareResolution"))) return;
         const transformed = transformEntry(body);
         report({ status: transformed.status, hash: transformed.hash, patches: transformed.patches,
+          features: "features" in transformed ? transformed.features : undefined,
           compatibility: "compatibility" in transformed ? transformed.compatibility : undefined,
           reason: transformed.reason, checkedAt: new Date().toISOString() });
         if (!transformed.changed) return;

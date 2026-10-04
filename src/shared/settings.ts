@@ -1,8 +1,11 @@
 import type { StreamProfile } from "./streams";
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 export const MAX_CSS_LENGTH = 128 * 1024;
-export interface Settings { enabled: boolean; customCss: string; qualityEnabled: boolean; profile: StreamProfile }
-export const DEFAULT_SETTINGS: Settings = { enabled: false, customCss: "", qualityEnabled: false,
+export type ThemeId = "native" | "graphite" | "amoled" | "contrast";
+export interface Settings { schemaVersion: 1; enabled: boolean; customCss: string; qualityEnabled: boolean; profile: StreamProfile;
+  themeId: ThemeId; indicatorEnabled: boolean; indicatorDetailed: boolean; miniPlayerEnabled: boolean; streamMenuEnabled: boolean }
+export const DEFAULT_SETTINGS: Settings = { schemaVersion: 1, enabled: false, customCss: "", qualityEnabled: false,
+  themeId: "native", indicatorEnabled: false, indicatorDetailed: false, miniPlayerEnabled: true, streamMenuEnabled: true,
   profile: { resolution: "1440p", fps: 30, codec: "auto", bitrateMbps: 16 } };
 export function validateProfile(value: unknown): StreamProfile {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid stream profile");
@@ -20,11 +23,17 @@ export function validateProfile(value: unknown): StreamProfile {
 export function validateSettings(value: unknown): Settings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid settings");
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).some(key => !["enabled", "customCss", "qualityEnabled", "profile"].includes(key)) ||
+  if (v.schemaVersion !== undefined && v.schemaVersion !== 1) throw new Error("Unsupported settings schema");
+  if (Object.keys(v).some(key => !["schemaVersion", "enabled", "customCss", "qualityEnabled", "profile", "themeId", "indicatorEnabled", "indicatorDetailed", "miniPlayerEnabled", "streamMenuEnabled"].includes(key)) ||
       typeof v.enabled !== "boolean" || typeof v.customCss !== "string" || v.customCss.length > MAX_CSS_LENGTH) {
     throw new Error("Invalid settings");
   }
   if (v.qualityEnabled !== undefined && typeof v.qualityEnabled !== "boolean") throw new Error("Invalid quality toggle");
-  return { enabled: v.enabled, customCss: v.customCss, qualityEnabled: v.qualityEnabled === true,
+  for (const key of ["indicatorEnabled", "indicatorDetailed", "miniPlayerEnabled", "streamMenuEnabled"])
+    if (v[key] !== undefined && typeof v[key] !== "boolean") throw new Error("Invalid feature toggle");
+  if (v.themeId !== undefined && (typeof v.themeId !== "string" || !["native", "graphite", "amoled", "contrast"].includes(v.themeId))) throw new Error("Invalid theme");
+  return { schemaVersion: 1, enabled: v.enabled, customCss: v.customCss, qualityEnabled: v.qualityEnabled === true,
+    themeId: (v.themeId ?? "native") as ThemeId, indicatorEnabled: v.indicatorEnabled === true,
+    indicatorDetailed: v.indicatorDetailed === true, miniPlayerEnabled: v.miniPlayerEnabled !== false, streamMenuEnabled: v.streamMenuEnabled !== false,
     profile: validateProfile(v.profile ?? DEFAULT_SETTINGS.profile) };
 }

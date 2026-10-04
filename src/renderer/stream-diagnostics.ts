@@ -15,6 +15,7 @@ export type StreamEncoding = {
 };
 
 export type StreamRecord = {
+  streamId?: string;
   connectionId: number;
   direction: StreamDirection;
   media: StreamMedia;
@@ -29,6 +30,7 @@ export type StreamRecord = {
 };
 
 export type StreamDiagnosticsSnapshot = {
+  sampledAt?: number | null;
   state: {
     connections: number;
     displayCapture: number;
@@ -146,6 +148,9 @@ export function installStreamDiagnostics(): {
   let sampling = false;
   let nextConnectionId = 1;
   let sampleCount = 0;
+  let sampledAt: number | null = null;
+  let nextStreamId = 1;
+  const streamIds = new Map<string, string>();
   let latestStreams: StreamRecord[] = [];
   const connections = new Map<any, Connection>();
   const displayTracks = new Map<any, Capture>();
@@ -170,6 +175,7 @@ export function installStreamDiagnostics(): {
     connections.delete(pc);
     const prefix = `${connection.id}:`;
     for (const key of baselines.keys()) if (key.startsWith(prefix)) baselines.delete(key);
+    for (const key of streamIds.keys()) if (key.startsWith(prefix)) streamIds.delete(key);
     latestStreams = latestStreams.filter(stream => stream.connectionId !== connection.id);
   };
 
@@ -299,6 +305,12 @@ export function installStreamDiagnostics(): {
     const video = metric(report);
     if (video && video.fps === null) video.fps = rate.fps;
     const record: StreamRecord = {
+      streamId: (() => {
+        const key = `${connection.id}:${direction}:${report.id}`;
+        if (!streamIds.has(key)) streamIds.set(key, `${connection.id}:${direction}:${nextStreamId++}`);
+        if (streamIds.size > MAX_STREAMS * 2) streamIds.delete(streamIds.keys().next().value!);
+        return streamIds.get(key)!;
+      })(),
       connectionId: connection.id,
       direction,
       media,
@@ -354,6 +366,7 @@ export function installStreamDiagnostics(): {
       }
       latestStreams = sampled.slice(-MAX_STREAMS);
       sampleCount += 1;
+      sampledAt = Date.now();
     } catch { /* diagnostics must never affect host media */ }
     finally { sampling = false; }
   };
@@ -361,6 +374,7 @@ export function installStreamDiagnostics(): {
   const interval = setInterval(() => { void sample(); }, POLL_INTERVAL_MS);
 
   const snapshot = (): StreamDiagnosticsSnapshot => { pruneDisplayTracks(); return ({
+    sampledAt,
     state: {
       connections: connections.size,
       displayCapture: displayTracks.size,
@@ -408,6 +422,7 @@ export function installStreamDiagnostics(): {
     }
     displayTracks.clear();
     baselines.clear();
+    streamIds.clear();
     latestStreams = [];
     displayObservers.clear();
     connectionObservers.clear();

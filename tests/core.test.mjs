@@ -133,12 +133,18 @@ test("legacy CSS-only settings migrate to quality disabled with a copied default
   const migrated = validateSettings(legacy);
 
   assert.deepEqual(migrated, {
+    ...DEFAULT_SETTINGS,
     ...legacy,
     qualityEnabled: false,
     profile: DEFAULT_SETTINGS.profile,
   });
   assert.notStrictEqual(migrated.profile, DEFAULT_SETTINGS.profile);
   assert.deepEqual(legacy, { enabled: true, customCss: "body { color: purple; }" });
+});
+test("feature settings reject non-string themes and non-boolean toggles",()=>{
+  for(const themeId of [["native"],null,{},0]) assert.throws(()=>validateSettings({...DEFAULT_SETTINGS,themeId}),/Invalid theme/);
+  for(const key of ["indicatorEnabled","indicatorDetailed","miniPlayerEnabled","streamMenuEnabled"])
+    for(const value of [1,"true",null]) assert.throws(()=>validateSettings({...DEFAULT_SETTINGS,[key]:value}),/Invalid feature toggle/);
 });
 
 test("settings validation returns detached top-level and nested profile copies", () => {
@@ -151,7 +157,7 @@ test("settings validation returns detached top-level and nested profile copies",
   const validated = validateSettings(original);
   const secondCopy = validateSettings(original);
 
-  assert.deepEqual(validated, original);
+  assert.deepEqual(validated, {...DEFAULT_SETTINGS,...original});
   assert.notStrictEqual(validated, original);
   assert.notStrictEqual(validated.profile, original.profile);
   assert.notStrictEqual(secondCopy.profile, validated.profile);

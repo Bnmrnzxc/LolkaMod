@@ -1,6 +1,6 @@
 {
   "name": "lolkamod",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Desktop mod with native stream quality controls for Lolka",
   "type": "module",
