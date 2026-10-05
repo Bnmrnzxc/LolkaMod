@@ -80,6 +80,7 @@ class Document extends Events {
     this.defaultView = new Events();
   }
   createElement(tag) { return new Element(tag, this); }
+  createElementNS(namespace, tag) { const element = new Element(tag, this); element.namespaceURI = namespace; return element; }
 }
 
 class Storage {
@@ -246,11 +247,19 @@ test('feature settings retain themes, indicator and stream menu without mini-pla
     const dispose = mountFeatureSettings(container, features);
     try {
       const nodes = descendants(container);
-      const toggles = nodes.filter(element => element.tagName === 'INPUT');
+      const toggles = nodes.filter(element => element.tagName === 'INPUT' && element.type === 'checkbox');
       assert.deepEqual(toggles.map(element => element.dataset.setting).sort(),
         ['indicatorDetailed', 'indicatorEnabled', 'streamMenuEnabled']);
-      assert.equal(nodes.filter(element => element.tagName === 'SELECT').length, 1);
-      assert.equal(nodes.find(element => element.dataset.setting === 'themeId').options.length, 4);
+      assert.equal(nodes.filter(element => element.tagName === 'SELECT').length, 0);
+      const grid = nodes.find(element => element.getAttribute('role') === 'radiogroup');
+      const swatches = nodes.filter(element => element.getAttribute('role') === 'radio');
+      assert.equal(grid.getAttribute('aria-label'), 'Тема LolkaMod');
+      assert.equal(swatches.length, 25);
+      assert.equal(swatches.filter(element => element.getAttribute('aria-checked') === 'true').length, 0);
+      assert.equal(swatches.find(element => element.getAttribute('aria-checked') === 'true'), undefined);
+      assert.equal(nodes.find(element => element.dataset.themeId === 'native').getAttribute('aria-pressed'), 'true');
+      assert.equal(swatches[0].dataset.themeId, 'custom');
+      assert.equal(new Set(swatches.map(element => element.dataset.themeId)).size, 25);
       assert.doesNotMatch(nodes.map(element => element.textContent).join('\n'), /Мини-плеер|PiP/);
       const indicator = toggles.find(element => element.dataset.setting === 'indicatorEnabled');
       indicator.checked = true; indicator.dispatch('change'); await flush();

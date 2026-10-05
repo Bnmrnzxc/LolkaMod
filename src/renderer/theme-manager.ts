@@ -1,62 +1,13 @@
-export type ThemeId = 'native' | 'graphite' | 'amoled' | 'contrast';
-
-export type ThemeDefinition = {
-  id: ThemeId;
-  title: string;
-  description: string;
-};
-
-export const THEMES: readonly ThemeDefinition[] = Object.freeze([
-  { id: 'native', title: 'Штатная', description: 'Оформление, выбранное в Lolka' },
-  { id: 'graphite', title: 'Графит', description: 'Тёмные нейтральные поверхности' },
-  { id: 'amoled', title: 'AMOLED', description: 'Чёрный фон и приглушённые панели' },
-  { id: 'contrast', title: 'Высокий контраст', description: 'Яркий текст, границы и фокус' },
-]);
-
-type Palette = {
-  primary: string;
-  secondary: string;
-  tertiary: string;
-  elevated: string;
-  hover: string;
-  border: string;
-  borderStrong: string;
-  text: string;
-  normal: string;
-  muted: string;
-  disabled: string;
-  brand: string;
-  brandHover: string;
-  brandText: string;
-  rgb: string;
-};
-
-const PALETTES: Record<Exclude<ThemeId, 'native'>, Palette> = {
-  graphite: {
-    primary: '#17191d', secondary: '#202329', tertiary: '#282c33', elevated: '#30353e',
-    hover: '#373d47', border: '#373d46', borderStrong: '#535d6b',
-    text: '#f3f5f8', normal: '#d1d6df', muted: '#a6afbd', disabled: '#7c8798',
-    brand: '#5374e0', brandHover: '#4752c4', brandText: '#ffffff', rgb: '23, 25, 29',
-  },
-  amoled: {
-    primary: '#000000', secondary: '#08090b', tertiary: '#121418', elevated: '#1a1e24',
-    hover: '#252b34', border: '#2b3039', borderStrong: '#4d5766',
-    text: '#f6f7fb', normal: '#d3d8e2', muted: '#a2acbc', disabled: '#737e90',
-    brand: '#5374e0', brandHover: '#4752c4', brandText: '#ffffff', rgb: '0, 0, 0',
-  },
-  contrast: {
-    primary: '#07090d', secondary: '#11151c', tertiary: '#1b222d', elevated: '#252f3e',
-    hover: '#354359', border: '#a9b6c9', borderStrong: '#dce7f7',
-    text: '#ffffff', normal: '#ffffff', muted: '#d3ddeb', disabled: '#aebacc',
-    brand: '#9dbbff', brandHover: '#bfd3ff', brandText: '#081326', rgb: '7, 9, 13',
-  },
-};
-
+import { BUILT_IN_THEMES, createCustomThemePalette, DEFAULT_CUSTOM_THEME, type CustomTheme, type ThemeId, type ThemePalette } from '../shared/themes';
+export type { ThemeId, ThemeDefinition } from '../shared/themes';
+export const THEMES = BUILT_IN_THEMES;
+const PALETTES = new Map(THEMES.flatMap(theme => theme.palette ? [[theme.id, theme.palette] as const] : []));
 const ATTRIBUTE = 'data-lolkamod-theme';
 const activeControllers = new WeakMap<Document, { stop(): void }>();
 
-function declarations(p: Palette): string {
+function declarations(p: Readonly<ThemePalette>): string {
   const values: Record<string, string> = {
+    'lolkamod-color-scheme': p.mode,
     'color-bg-primary': p.primary,
     'color-bg-secondary': p.secondary,
     'color-bg-secondary-alt': p.secondary,
@@ -108,28 +59,48 @@ function declarations(p: Palette): string {
     'color-bg-button-primary-active': p.brandHover,
     'color-border-button-primary': p.brand,
     'color-link': p.brand,
+    'color-status-danger': p.danger,
+    'color-status-danger-bright': p.danger,
+    'color-text-danger': p.danger,
+    'color-status-success': p.success,
+    'color-status-success-bright': p.success,
+    'color-status-warning': p.warning,
   };
   return Object.entries(values).map(([name, value]) => `--${name}:${value};`).join('\n');
 }
 
-export function themeCss(theme: ThemeId): string {
+export function themeCss(theme: ThemeId, custom: CustomTheme = DEFAULT_CUSTOM_THEME): string {
   if (theme === 'native') return '';
-  const palette = PALETTES[theme];
+  const palette = theme === 'custom' ? createCustomThemePalette(custom) : PALETTES.get(theme);
   if (!palette) throw new TypeError('Неизвестная тема LolkaMod');
   const root = `html[${ATTRIBUTE}="${theme}"]`;
   // These host classes define palettes locally, so override variables at their scope too.
   // Host preference/classes remain intact; new host theme changes need no observer.
-  return `${root},${root} :where(.dark-theme,.light-theme){
-color-scheme:dark;
+  return `${root},${root} :where(.dark-theme,.light-theme,.ash-theme,.aubergine-theme,.slack-theme){
+color-scheme:${palette.mode};
 ${declarations(palette)}
 }
+${palette.gradient ? `${root} :where(
+[class*="AppWithSidebar-module__sidebar1__"],
+[class*="AppWithSidebar-module__sidebar2__"],
+[class*="AppWithSidebar-module__content__"],
+[class*="Channel-module__chatArea__"],
+[class*="Channel-module__chatAreaFull__"],
+[class*="Channel-module__chatAreaCompact__"],
+[class*="SettingsLayout-module__sidebar__"],
+[class*="SettingsLayout-module__main__"],
+[class*="AppearanceSettings-module__root__"]){
+background-color:${palette.primary};
+background-image:${palette.gradient};
+background-size:cover;
+}` : ''}
 ${theme === 'contrast' ? `${root} :where(button,a,input,textarea,select,[tabindex]):focus-visible{
 outline:3px solid #ffdf6e;outline-offset:3px;
 }` : ''}`;
 }
 
 export type ThemeController = {
-  apply(theme: ThemeId): void;
+  apply(theme: ThemeId, custom?: CustomTheme): void;
   current(): ThemeId;
   stop(): void;
 };
@@ -154,9 +125,9 @@ export function createThemeController(doc: Document = document): ThemeController
   }
 
   const controller: ThemeController = {
-    apply(theme) {
+    apply(theme, custom) {
       if (stopped) return;
-      const css = themeCss(theme); // Reject unknown input before mutating the host.
+      const css = themeCss(theme, custom); // Reject unknown input before mutating the host.
       current = theme;
       if (theme === 'native') {
         clearAttribute();

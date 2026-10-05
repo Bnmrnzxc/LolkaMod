@@ -81,14 +81,14 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
   }});
   plugins.register({id:"ClientFeatures",start(scope){
     scope.add(()=>{theme?.stop();indicator?.stop();theme=undefined;indicator=undefined;});
-    theme=createThemeController();theme.apply(settings.themeId);
+    theme=createThemeController();theme.apply(settings.themeId,settings.customTheme);
     indicator=createStreamIndicator({enabled:settings.indicatorEnabled,detailed:settings.indicatorDetailed});
     const timer=setInterval(()=>{refreshIndicator();notify();},2000);
     scope.add(()=>{clearInterval(timer);});
   }});
   function applyFeatures(){
     if(!running)return;
-    theme?.apply(settings.themeId);
+    theme?.apply(settings.themeId,settings.customTheme);
     indicator?.setEnabled(settings.indicatorEnabled);indicator?.setDetailed(settings.indicatorDetailed);
     applyCss();
   }
@@ -108,10 +108,11 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
       streams: media?.snapshot(), stream1440p: "not-verified" };
   }
   async function saveSettings(patch: Partial<Settings>) {
-    validateSettings({ ...settings, ...patch });
+    const validated = validateSettings({ ...settings, ...patch });
+    const snapshot = Object.fromEntries(Object.keys(patch).map(key => [key, validated[key as keyof Settings]])) as Partial<Settings>;
     // Serialize writes; a slow earlier save must not overwrite the most recent settings.
     const operation = saveQueue.then(async () => {
-      const next = validateSettings({ ...settings, ...patch });
+      const next = validateSettings({ ...settings, ...snapshot });
       const saved = await native.writeSettings(next);
       settings = validateSettings(saved);
       // Legacy 0.2 profile fields remain readable, but native selections govern media.

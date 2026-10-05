@@ -96,23 +96,23 @@ export function mountStreamControls(
     .lm-stream-controls { width: 100%; color: inherit; font: inherit; }
     .lm-stream-controls h2 { margin: 0 0 10px; font-size: 15px; }
     .lm-stream-controls .lm-stream-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-    .lm-stream-controls label { display: grid; gap: 4px; color: #c9c5d5; font-size: 12px; }
+    .lm-stream-controls label { display: grid; gap: 4px; color: var(--color-text-secondary, #c9c5d5); font-size: 12px; }
     .lm-stream-controls input, .lm-stream-controls select, .lm-stream-controls button {
-      min-width: 0; min-height: 34px; border: 1px solid #38364b; border-radius: 8px;
-      padding: 5px 8px; background: #100f18; color: #eeeaf7; font: inherit;
+      min-width: 0; min-height: 34px; border: 1px solid var(--color-border-primary, #38364b); border-radius: 8px;
+      padding: 5px 8px; background: var(--color-bg-input, #100f18); color: var(--color-text-primary, #eeeaf7); font: inherit;
     }
-    .lm-stream-controls button { cursor: pointer; background: #211f2d; }
+    .lm-stream-controls button { cursor: pointer; background: var(--color-bg-button-secondary, #211f2d); }
     .lm-stream-controls button:disabled { cursor: wait; opacity: .65; }
     .lm-stream-controls .lm-stream-toggle { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
-    .lm-stream-controls .lm-stream-toggle input { min-height: 0; accent-color: #8b5cf6; }
+    .lm-stream-controls .lm-stream-toggle input { min-height: 0; accent-color: var(--color-brand-primary, #8b5cf6); }
     .lm-stream-controls .lm-stream-note, .lm-stream-controls .lm-stream-status {
-      margin: 8px 0 0; color: #a09caf; font-size: 11px;
+      margin: 8px 0 0; color: var(--color-text-secondary, #a09caf); font-size: 11px;
     }
     .lm-stream-controls .lm-stream-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .lm-stream-controls .lm-stream-output {
       max-height: 150px; overflow: auto; margin: 8px 0 0; padding: 9px;
-      border: 1px solid #302e40; border-radius: 8px; background: #100f18;
-      color: #c4b5fd; white-space: pre-wrap; overflow-wrap: anywhere;
+      border: 1px solid var(--color-border-primary, #302e40); border-radius: 8px; background: var(--color-bg-input, #100f18);
+      color: var(--color-text-normal, #c4b5fd); white-space: pre-wrap; overflow-wrap: anywhere;
       font: 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
     }
   `;

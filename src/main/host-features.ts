@@ -9,6 +9,7 @@ const settingsSpecs = [
   {find:'pe=Mu[a]?o(Mu[a]):""',replace:'pe=a==="lolkamod"?"LolkaMod":Mu[a]?o(Mu[a]):""'},
   {find:'a===Ao.Appearance&&s.jsx(QFn,{})',replace:'a==="lolkamod"&&s.jsx(__lmHostSettings,{}),a===Ao.Appearance&&s.jsx(QFn,{})'},
   {find:'cn=ss((e,t)=>({openModals:[],settingsActiveTab:Ao.Profiles,settingsAudioVideoTab:Ag.Audio'},
+      {find:'jye=v.createContext(null),GWe=({children:e})=>{const{contextMenu:t,showContextMenu:n,hideContextMenu:r,handleOpenChange:o}=WWe()'},
   {find:'setSettingsActiveTab:n=>e({settingsActiveTab:n})'},
   {find:'return n===_e.Settings&&(o.settingsActiveTab=Ao.Profiles,o.settingsAudioVideoTab=Ag.Audio'},
   {find:sidebarIconFind,replace:sidebarIconFind.replace('const ue=I$n[Me.id]', 'const ue=Me.id==="lolkamod"?__lmHostBrand:I$n[Me.id]')},
@@ -58,9 +59,11 @@ export function transformHostFeatures(source:string, hash:string, testKnown=fals
   if(settings){
     const test=optionalContracts(source,[
       {find:'P$n=({isOpen:e,onClose:t,className:n,...r})=>{const{t:o}=Xe("settings"),{settingsActiveTab:a,setSettingsActiveTab:l,settingsAudioVideoTab:c'},
-      {find:'Eje.createRoot(document.getElementById("root")).render(s.jsx(Var,{children:s.jsx(vPe,{i18n:At'},
-    ],["P$n","Eje","s","vPe","At"]);
-    const testReference=test?test.rebind(`,...(globalThis.LolkaModNative?.diagnostics().testMode?{test:{mount:container=>{const root=Eje.createRoot(container);root.render(s.jsx(vPe,{i18n:At,children:s.jsx(P$n,{isOpen:true,onClose:()=>{}})}));return()=>root.unmount()},mountChrome:(container,props)=>{const root=Eje.createRoot(container);root.render(s.jsxs("div",{style:{position:"fixed",bottom:20,left:60,width:100,height:50,overflow:"hidden",transform:"translateZ(0)"},children:[typeof __lmHostToolbar==="function"&&s.jsx(__lmHostToolbar,props),typeof __lmHostStreamTools==="function"&&s.jsx(__lmHostStreamTools,props)]}));return()=>root.unmount()}}}:{})`):"";
+      {find:'Eje.createRoot(document.getElementById("root")).render(s.jsx(Var,{children:s.jsx(vPe,{i18n:At,children:s.jsx(LBt,'},
+      {find:'cn=ss((e,t)=>({openModals:[],settingsActiveTab:Ao.Profiles,settingsAudioVideoTab:Ag.Audio'},
+      {find:'jye=v.createContext(null),GWe=({children:e})=>{const{contextMenu:t,showContextMenu:n,hideContextMenu:r,handleOpenChange:o}=WWe()'},
+    ],["P$n","Eje","s","Var","vPe","At","LBt","GWe","cn"]);
+    const testReference=test?test.rebind(`,...(globalThis.LolkaModNative?.diagnostics().testMode?{test:{mount:container=>{cn.getState().setSettingsActiveTab("lolkamod");const root=Eje.createRoot(container);root.render(s.jsx(Var,{children:s.jsx(vPe,{i18n:At,children:s.jsx(LBt,{children:s.jsx(GWe,{children:s.jsx(P$n,{isOpen:true,onClose:()=>{}})})})})}));return()=>root.unmount()},mountChrome:(container,props)=>{const root=Eje.createRoot(container);root.render(s.jsxs("div",{style:{position:"fixed",bottom:20,left:60,width:100,height:50,overflow:"hidden",transform:"translateZ(0)"},children:[typeof __lmHostToolbar==="function"&&s.jsx(__lmHostToolbar,props),typeof __lmHostStreamTools==="function"&&s.jsx(__lmHostStreamTools,props)]}));return()=>root.unmount()}}}:{})`):"";
     body=settings.body+settings.rebind(`
 function __lmHostSettings(){const ref=v.useRef(null);v.useEffect(()=>globalThis.LolkaMod?.mountSettings(ref.current),[]);return s.jsx("div",{ref,"data-lolkamod-host-settings":true})}
 function __lmHostBrand(){const id="lolkamod-host-brand-"+v.useId();return s.jsxs("svg",{width:24,height:24,viewBox:"0 0 1024 1024",fill:"currentColor",style:{flexShrink:0},"aria-hidden":true,focusable:false,"data-lolkamod-brand":"sidebar",children:[s.jsx("defs",{children:s.jsxs("mask",{id,maskUnits:"userSpaceOnUse",x:0,y:0,width:1024,height:1024,children:[s.jsx("rect",{width:1024,height:1024,fill:"white"}),...${JSON.stringify(BRAND_CUTOUTS.sidebar.paths)}.map(d=>s.jsx("path",{d,fill:"none",stroke:"black",strokeWidth:${BRAND_CUTOUTS.sidebar.width},strokeLinecap:"round",strokeLinejoin:"round"},d))]})}),s.jsx("path",{d:${JSON.stringify(BRAND_HEX_PATH)},mask:"url(#"+id+")"})]})}

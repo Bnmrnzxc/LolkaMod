@@ -110,11 +110,11 @@ button{all:unset;display:inline-flex;align-items:center;justify-content:center;w
 border-radius:3px;cursor:help;color:var(--color-text-secondary,#9b9ba2);box-sizing:border-box}
 button[data-state="live"]{color:var(--color-status-success-bright,#43b581)}
 button[data-state="limited"],button[data-state="stale"]{color:var(--color-status-warning,#faa61a)}
-button:hover{background:#ffffff14}button:focus-visible{outline:2px solid #a7bcff;outline-offset:3px}
+button:hover{background:var(--color-bg-hover,#ffffff14)}button:focus-visible{outline:2px solid var(--color-brand-primary,#a7bcff);outline-offset:3px}
 svg{display:block;width:18px;height:18px;pointer-events:none}
 `;
 const TOOLTIP_CSS = `
-:host{all:initial;display:contents;color-scheme:dark;font:12px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--color-text-primary,#f3f5fb)}
+:host{all:initial;display:contents;color-scheme:var(--lolkamod-color-scheme,dark);font:12px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--color-text-primary,#f3f5fb)}
 *{box-sizing:border-box}
 .tooltip{position:fixed;z-index:2147482000;width:min(280px,calc(100vw - 24px));padding:11px 13px;
 border:1px solid var(--color-border-primary,#485165);border-radius:9px;background:var(--color-bg-tooltip,#151a24);box-shadow:0 8px 28px #0008;pointer-events:none}

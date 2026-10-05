@@ -126,6 +126,73 @@ privateTest('renamed lexical bindings, whitespace and comments preserve both opt
   }
 });
 
+privateTest('isolated settings mount uses the rebound stock adaptive provider, translation context and modal', async () => {
+  for (const source of [await fixture(), await renamedFixture()]) {
+    const result = transformHostFeatures(source, 'provider-test-hash');
+    const match = optionalContracts(source, [
+      { find: 'P$n=({isOpen:e,onClose:t,className:n,...r})=>{const{t:o}=Xe("settings"),{settingsActiveTab:a,setSettingsActiveTab:l,settingsAudioVideoTab:c' },
+      { find: 'Eje.createRoot(document.getElementById("root")).render(s.jsx(Var,{children:s.jsx(vPe,{i18n:At,children:s.jsx(LBt,' },
+      { find: 'cn=ss((e,t)=>({openModals:[],settingsActiveTab:Ao.Profiles,settingsAudioVideoTab:Ag.Audio' },
+      { find: 'jye=v.createContext(null),GWe=({children:e})=>{const{contextMenu:t,showContextMenu:n,hideContextMenu:r,handleOpenChange:o}=WWe()' },
+    ], ['P$n', 'Eje', 's', 'Var', 'vPe', 'At', 'LBt', 'GWe', 'cn']);
+    const production = optionalContracts(source, hostContractSpecs.settings, ['cn', '_e']);
+    assert.ok(match); assert.ok(production); assert.ok(match.binding.Var, 'the stock root provider has its own rebound binding');
+    if (source !== await fixture()) assert.notEqual(match.binding.Var, 'Var', 'renamed fixture exercises provider rebinding');
+    const registration = syntax(result.body).body.find(node => node.type === 'ExpressionStatement'
+      && node.expression.type === 'ChainExpression' && node.expression.expression.type === 'CallExpression'
+      && node.expression.expression.arguments[0]?.value === 'HostSettings');
+    assert.ok(registration, 'the generated HostSettings registration is evaluated without executing vendor source');
+    const script = new vm.Script(result.body.slice(registration.start, registration.end));
+    for (const mode of [true, false, undefined]) {
+      const registered = [], roots = [], actions = [];
+      const provider = Symbol('host root wrapper'), translation = Symbol('host i18n provider'), adaptive = Symbol('host adaptive provider');
+      const contextMenu = Symbol('host context menu provider');
+      const modal = Symbol('host settings modal'), i18n = { identity: 'host translations' };
+      const scope = {
+        LolkaMod: { modules: { register: (name, api, owner) => registered.push({ name, api, owner }) } },
+        ...(mode === undefined ? {} : { LolkaModNative: { diagnostics: () => ({ testMode: mode }) } }),
+      };
+      const put = (bindings, name, value) => { assert.ok(bindings[name]); scope[bindings[name]] = value; };
+      put(match.binding, 'Var', provider); put(match.binding, 'vPe', translation);
+      put(match.binding, 'LBt', adaptive);
+      put(match.binding, 'GWe', contextMenu);
+      put(match.binding, 'P$n', modal); put(match.binding, 'At', i18n);
+      put(match.binding, 's', { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) });
+      put(match.binding, 'Eje', { createRoot: container => {
+        const root = { container, rendered: null, unmounts: 0,
+          render(tree) { this.rendered = tree; }, unmount() { this.unmounts++; this.rendered = null; } };
+        roots.push(root); return root;
+      } });
+      put(production.binding, 'cn', { getState: () => ({ setSettingsActiveTab: value => actions.push(['tab', value]),
+        openModal: value => actions.push(['modal', value]) }) });
+      put(production.binding, '_e', { Settings: 'stock settings modal' });
+      script.runInNewContext(scope);
+      assert.equal(registered.length, 1); assert.equal(registered[0].name, 'HostSettings');
+      assert.equal(registered[0].owner, 'provider-test-hash'); assert.ok(Object.isFrozen(registered[0].api));
+      const api = registered[0].api;
+      api.open(); assert.deepEqual(actions, [['tab', 'lolkamod'], ['modal', 'stock settings modal']], 'production open contract is unchanged');
+      assert.equal('test' in api, mode === true, 'test references are gated by the isolated desktop diagnostic');
+      assert.equal(roots.length, 0, 'registration does not mount a root');
+      if (mode !== true) continue;
+      actions.length = 0;
+      const container = { identity: 'isolated container' }, dispose = api.test.mount(container);
+      assert.deepEqual(actions, [['tab', 'lolkamod']], 'isolated mount selects the mod without opening a second native modal');
+      assert.equal(roots.length, 1); assert.strictEqual(roots[0].container, container);
+      const tree = roots[0].rendered;
+      assert.strictEqual(tree.type, provider, 'the same outer wrapper as the stock root wraps the test modal');
+      const translated = tree.props.children;
+      assert.strictEqual(translated.type, translation); assert.strictEqual(translated.props.i18n, i18n);
+      assert.strictEqual(translated.props.children.type, adaptive, 'the actual host adaptive provider wraps settings');
+      const contextNode = translated.props.children.props.children;
+      assert.strictEqual(contextNode.type, contextMenu, 'the host context menu provider wraps settings without adding app routes');
+      const settingsModal = contextNode.props.children;
+      assert.strictEqual(settingsModal.type, modal); assert.equal(settingsModal.props.isOpen, true);
+      assert.equal(typeof settingsModal.props.onClose, 'function');
+      dispose(); assert.equal(roots[0].unmounts, 1); assert.equal(roots[0].rendered, null, 'disposal releases the mounted root');
+    }
+  }
+});
+
 privateTest('missing and duplicate settings anchors fail only their optional settings group', async () => {
   const original = await fixture(), spec = hostContractSpecs.settings[0];
   assert.ok(original.includes(spec.find));

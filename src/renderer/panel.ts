@@ -25,7 +25,7 @@ let activeDisposer: (() => void) | undefined;
 const PANEL_STYLES = `
   :host {
     all: initial;
-    color-scheme: dark;
+    color-scheme: var(--lolkamod-color-scheme, dark);
     font-family: Inter, "Segoe UI", system-ui, sans-serif;
     font-size: 14px;
     line-height: 1.45;
@@ -49,11 +49,11 @@ const PANEL_STYLES = `
     bottom: 18px;
     width: 46px;
     height: 46px;
-    border: 1px solid #46464e;
+    border: 1px solid var(--color-border-primary, #46464e);
     border-radius: 15px;
-    background: #2c2c30;
+    background: var(--color-bg-tertiary, #2c2c30);
     box-shadow: 0 8px 26px #0008;
-    color: #fff;
+    color: var(--color-text-primary, #fff);
     font-weight: 800;
     letter-spacing: .03em;
     cursor: pointer;
@@ -70,7 +70,7 @@ const PANEL_STYLES = `
     max-height: calc(100vh - 104px);
     overflow: auto;
     padding: 20px;
-    border: 1px solid #343247;
+    border: 1px solid var(--color-border-primary, #343247);
     border-radius: 18px;
     background: var(--color-bg-primary, #171622);
     box-shadow: 0 18px 60px #000b;
@@ -96,24 +96,24 @@ const PANEL_STYLES = `
   .version { margin-top: 2px; color: var(--color-text-secondary, #9d99ae); font-size: 12px; }
   .close, .secondary, .primary {
     min-height: 36px;
-    border: 1px solid #3b394c;
+    border: 1px solid var(--color-border-button, #3b394c);
     border-radius: 10px;
-    background: #211f2d;
+    background: var(--color-bg-button-secondary, #211f2d);
     cursor: pointer;
   }
-  .close { width: 36px; font-size: 20px; color: #c8c4d5; }
+  .close { width: 36px; font-size: 20px; color: var(--color-text-secondary, #c8c4d5); }
   .setting-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 18px;
     padding: 13px 14px;
-    border: 1px solid #302e40;
+    border: 1px solid var(--color-border-primary, #302e40);
     border-radius: 12px;
-    background: #1d1b29;
+    background: var(--color-bg-secondary, #1d1b29);
   }
   .setting-copy strong { display: block; font-size: 13px; }
-  .setting-copy span { display: block; margin-top: 3px; color: #a09caf; font-size: 12px; }
+  .setting-copy span { display: block; margin-top: 3px; color: var(--color-text-secondary, #a09caf); font-size: 12px; }
   .switch { position: relative; display: inline-flex; flex: 0 0 auto; cursor: pointer; }
   .switch input {
     position: absolute;
@@ -127,7 +127,7 @@ const PANEL_STYLES = `
     height: 24px;
     padding: 3px;
     border-radius: 99px;
-    background: #484554;
+    background: var(--color-border-secondary, #484554);
     transition: background .15s ease;
   }
   .switch-track::after {
@@ -135,12 +135,12 @@ const PANEL_STYLES = `
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #f7f5ff;
+    background: var(--color-text-primary, #f7f5ff);
     content: "";
     transition: transform .15s ease;
   }
   .switch input:checked + .switch-track { background: var(--color-brand-primary, #65b9dc); }
-  .switch input:checked + .switch-track::after { transform: translateX(18px); }
+  .switch input:checked + .switch-track::after { transform: translateX(18px); background: var(--color-text-on-brand, #f7f5ff); }
   .editor-label { display: block; margin-bottom: 7px; font-weight: 600; }
   textarea {
     display: block;
@@ -148,29 +148,29 @@ const PANEL_STYLES = `
     min-height: 164px;
     resize: vertical;
     padding: 12px;
-    border: 1px solid #38364b;
+    border: 1px solid var(--color-border-primary, #38364b);
     border-radius: 12px;
-    background: #100f18;
-    color: #e8e3f4;
+    background: var(--color-bg-input, #100f18);
+    color: var(--color-text-primary, #e8e3f4);
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     font-size: 12px;
     tab-size: 2;
   }
-  .hint { margin: 7px 0 0; color: #918da1; font-size: 11px; }
+  .hint { margin: 7px 0 0; color: var(--color-text-secondary, #918da1); font-size: 11px; }
   .actions { gap: 9px; flex-wrap: wrap; }
   .primary, .secondary { padding: 0 13px; }
   .primary { border-color: var(--color-brand-primary, #65b9dc); background: var(--color-brand-primary, #65b9dc); color: var(--color-text-on-brand, #172027); font-weight: 650; }
-  .secondary { color: #ded9eb; }
+  .secondary { color: var(--color-text-normal, #ded9eb); }
   .primary:hover { background: var(--color-brand-primary-hover, #82c9e7); }
-  .secondary:hover, .close:hover { background: #2c293a; }
+  .secondary:hover, .close:hover { background: var(--color-bg-hover, #2c293a); }
   .diagnostics {
     max-height: 200px;
     overflow: auto;
     padding: 12px;
-    border: 1px solid #302e40;
+    border: 1px solid var(--color-border-primary, #302e40);
     border-radius: 10px;
-    background: #100f18;
-    color: #c4b5fd;
+    background: var(--color-bg-input, #100f18);
+    color: var(--color-text-normal, #c4b5fd);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;

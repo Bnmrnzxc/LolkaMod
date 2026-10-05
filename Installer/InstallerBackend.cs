@@ -13,7 +13,7 @@ namespace LolkaModInstaller
 {
     public static class InstallerBackend
     {
-        public const string ModVersion = "0.5.2";
+        public const string ModVersion = "0.5.3";
         // Migration hint only; schema 2 stores the exact hash of each validated host.
         private const string OriginalHash = "fd94ecec264d7d7a56a0b5d1bb5ac1e416b6c9a4ee2d171b3704b0b72f0260a8";
         private const string HostMain = "dist-js/main.js", HostPreload = "dist-js/preload.js";

@@ -115,7 +115,7 @@ test('built-in themes are local scoped palettes, preserve host classes and remov
   }
   assert.match(themes.themeCss('contrast'), /:focus-visible/);
   assert.throws(() => controller.apply('foreign-theme'), /Неизвестная тема/);
-  assert.equal(controller.current(), 'contrast');
+  assert.equal(controller.current(), themes.THEMES.at(-1).id);
   controller.apply('native');
   assert.equal(doc.documentElement.getAttribute('data-lolkamod-theme'), null);
   assert.equal(owned(doc, 'lolkamod-built-in-theme').length, 0);
@@ -134,6 +134,24 @@ test('theme controller replacement and repeated switching do not accumulate node
   }
   controller.stop(); assert.equal(owned(doc, 'lolkamod-built-in-theme').length, 0);
   assert.equal(doc.documentElement.getAttribute('data-lolkamod-theme'), null);
+});
+
+test('custom palette edits replace the current CSS, reject malformed colors before mutation and clean up to native', () => {
+  const doc = new Document(); doc.documentElement.className = 'dark-theme original';
+  const controller = themes.createThemeController(doc);
+  const custom = { mode: 'dark', colors: ['#322b54'], saturation: 80 };
+  controller.apply('custom', custom);
+  const style = owned(doc, 'lolkamod-built-in-theme')[0], previous = style.textContent;
+  controller.apply('custom', { mode: 'light', colors: ['#0088ff', '#ff4488'], saturation: 40 });
+  assert.notEqual(style.textContent, previous); assert.match(style.textContent, /color-scheme:light/);
+  assert.match(style.textContent, /background-image:linear-gradient/);
+  assert.equal(owned(doc, 'lolkamod-built-in-theme').length, 1);
+  const before = style.textContent;
+  assert.throws(() => controller.apply('custom', { ...custom, colors: ['#bad'] }), /Invalid custom theme/);
+  assert.equal(style.textContent, before); assert.equal(controller.current(), 'custom');
+  controller.apply('native'); assert.equal(owned(doc, 'lolkamod-built-in-theme').length, 0);
+  assert.equal(doc.documentElement.getAttribute('data-lolkamod-theme'), null);
+  assert.equal(doc.documentElement.className, 'dark-theme original'); controller.stop();
 });
 
 test('indicator distinguishes capture settings, actual encoded metrics and inbound unknown source', () => {
