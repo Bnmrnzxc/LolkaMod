@@ -2,6 +2,17 @@ import { build } from 'esbuild';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { transform } from 'esbuild';
+// Validate the complete offline pack before producing an installer payload.
+const compileModule = async entry => {
+  const result = await build({ entryPoints: [entry], bundle: true, write: false,
+    platform: 'node', format: 'esm', target: 'node22' });
+  return import('data:text/javascript;base64,' + Buffer.from(result.outputFiles[0].text).toString('base64'));
+};
+const { DISCORD_SOUND_ASSETS } = await compileModule('src/shared/discord-sounds.ts');
+const { createBundledSoundPackService } = await compileModule('src/main/bundled-sound-pack-service.ts');
+const bundledSounds = JSON.parse(await readFile('assets/sounds/discord/classic.json', 'utf8'));
+const soundVerifier = createBundledSoundPackService(DISCORD_SOUND_ASSETS, bundledSounds);
+await soundVerifier.load(); soundVerifier.stop();
 await mkdir('dist', { recursive: true });
 await build({ entryPoints: ['src/renderer/index.ts'], outfile: 'dist/renderer.js', bundle: true,
   platform: 'browser', format: 'iife', target: 'chrome144', legalComments: 'none' });

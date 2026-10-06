@@ -143,7 +143,7 @@ test("legacy CSS-only settings migrate to quality disabled with a copied default
 });
 test("feature settings reject non-string themes and non-boolean toggles",()=>{
   for(const themeId of [["native"],null,{},0]) assert.throws(()=>validateSettings({...DEFAULT_SETTINGS,themeId}),/Invalid theme/);
-  for(const key of ["indicatorEnabled","indicatorDetailed","miniPlayerEnabled","streamMenuEnabled"])
+  for(const key of ["indicatorEnabled","indicatorDetailed","miniPlayerEnabled","streamMenuEnabled","soundThemeEnabled"])
     for(const value of [1,"true",null]) assert.throws(()=>validateSettings({...DEFAULT_SETTINGS,[key]:value}),/Invalid feature toggle/);
 });
 

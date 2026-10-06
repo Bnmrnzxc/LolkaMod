@@ -1,5 +1,7 @@
 # Third-party notices
 
+The optional Discord sound theme includes 15 classic action/notification MP3 assets in the installer for offline playback. These audio assets come from Discord's public asset service and remain the property of their respective rights holders. They are excluded from LolkaMod's MIT license. Provenance, original URLs, sizes and SHA-256 hashes are recorded in assets/sounds/discord/provenance.json. LolkaMod is not affiliated with Discord.
+
 LolkaMod's desktop loader includes Acorn 8.18.0 (https://github.com/acornjs/acorn).
 
 MIT License

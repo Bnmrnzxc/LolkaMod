@@ -18,18 +18,22 @@ test('appended source adapter reference parses without the private vendor fixtur
   await transform(sourceAdapterReference, { loader: 'js', format: 'esm' });
 });
 
-test('pinned ESM transform commits all native-quality patches and parses in its original scope', {
+test('pinned ESM transform commits native quality and the independent sound contract in its original scope', {
   skip: !existsSync(fixturePath),
 }, async () => {
   const original = await fs.readFile(fixturePath, 'utf8');
   const result = transformEntry(original);
   assert.equal(result.changed, true);
   assert.equal(result.hash, ENTRY_HASH);
-  assert.deepEqual(result.patches, nativeQualityPatches.map(p=>p.id));
-  assert.equal(result.body.endsWith(sourceAdapterReference), true);
+  assert.deepEqual(result.patches, [...nativeQualityPatches.map(p=>p.id), 'sound-effects']);
+  assert.equal(result.body.includes(sourceAdapterReference), true);
+  assert.equal(result.features.sounds, 'available');
   assert.equal(result.compatibility, 'known');
   await transform(result.body, { loader: 'js', format: 'esm' });
-  // Unrelated updates remain compatible; an already patched entry cannot be patched twice.
+  // Unrelated updates remain compatible; neither group may patch an already transformed entry.
   assert.equal(transformEntry(original + ' ').changed, true);
-  assert.equal(transformEntry(result.body).changed, false);
+  const repeated = transformEntry(result.body);
+  assert.equal(repeated.changed, false);
+  assert.equal(repeated.body, result.body);
+  assert.deepEqual(repeated.patches, []);
 });

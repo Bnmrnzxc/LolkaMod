@@ -141,7 +141,7 @@ privateFixtureTest('rebound minified picker helpers keep their 720/1080/1440 and
   assert.equal(calls[0].capture, 'window');
 });
 
-privateFixtureTest('missing, duplicate, changed size table and helper collision fail open byte-for-byte', async () => {
+privateFixtureTest('quality patches fail as one atomic group while an independent complete sound group may still load', async () => {
   const original = await fs.readFile(fixturePath, 'utf8');
   const cases = [
     original.replace('getDisplayMedia({audio:o,video:{frameRate:30}})', 'getDisplayMedia({audio:o,video:{frameRate:29}})'),
@@ -153,10 +153,28 @@ privateFixtureTest('missing, duplicate, changed size table and helper collision 
   for (let index = 0; index < cases.length; index++) {
     const source = cases[index];
     const result = transformEntry(source);
-    assert.equal(result.changed, false, `case ${index}: ${result.reason}`);
-    assert.equal(result.body, source);
-    assert.deepEqual(result.patches, []);
+    assert.equal(result.changed, true, `case ${index}: ${result.reason}`);
+    assert.equal(result.compatibility, 'sound-only', `case ${index}`);
+    assert.equal(result.body.startsWith(source), true, `case ${index}: source text must remain byte-for-byte intact`);
+    assert.deepEqual(result.patches, ['sound-effects'], `case ${index}: no native-quality patch may commit`);
+    assert.equal(result.features.sounds, 'available');
+    assert.equal(result.body.includes('function __lmStockProfile'), false, `case ${index}: no quality adapter reference`);
+    assert.equal(result.body.includes('modules.register("ScreenShareSettings"'), false, `case ${index}: no quality module registration`);
   }
+
+  const incompleteSound = original.replace('/sounds/space/message.mp3', '/sounds/space/message-v2.mp3');
+  const qualityOnly = transformEntry(incompleteSound);
+  assert.equal(qualityOnly.changed, true);
+  assert.equal(qualityOnly.compatibility, 'structural');
+  assert.equal(qualityOnly.features.sounds, 'unsupported');
+  assert.deepEqual(qualityOnly.patches, nativeQualityPatches.map(patch => patch.id));
+  assert.equal(qualityOnly.body.includes('modules.register("SoundEffects"'), false);
+
+  const incompleteBoth = cases[0].replace('/sounds/space/message.mp3', '/sounds/space/message-v2.mp3');
+  const unchanged = transformEntry(incompleteBoth);
+  assert.equal(unchanged.changed, false);
+  assert.equal(unchanged.body, incompleteBoth);
+  assert.deepEqual(unchanged.patches, []);
 });
 
 test('synthetic public negative inputs return the exact original bytes without private fixture', () => {

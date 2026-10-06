@@ -8,6 +8,10 @@ import { createStreamIndicator } from "./stream-indicator";
 import { mountStreamMenu, type HostStreamControls, type StreamMenuProps } from "./stream-menu";
 import type { FeatureSettingsOptions } from "./feature-settings";
 import type { UpdateStatus } from "../shared/updates";
+import { createSoundThemeController } from "./sound-theme";
+import type { SoundActionId, SoundEffects, SoundPack, SoundThemeStatus } from "../shared/sounds";
+import { DISCORD_ACTION_MAP, DISCORD_SOUND_ASSETS } from "../shared/discord-sounds";
+import type { SoundPackDownloadStatus } from "../main/sound-pack-service";
 
 interface Bridge {
   readSettings(): Settings;
@@ -16,6 +20,7 @@ interface Bridge {
   resetSettings(): Promise<Settings>;
   checkUpdates(): Promise<UpdateStatus>;
   openRelease(): Promise<void>;
+  loadSoundPack(): Promise<SoundPack>;
 }
 interface StreamToolsProps { readonly userId:string; readonly ownScreen:boolean; readonly video?:HTMLVideoElement }
 type HostSlot={kind:"settings"|"stream"|"tools";props?:StreamMenuProps|StreamToolsProps;dispose?:()=>void};
@@ -37,6 +42,7 @@ declare global {
       mountStreamMenu(container: HTMLElement, props: StreamMenuProps): () => void;
       mountStreamTools(container: HTMLElement, props: StreamToolsProps): () => void;
       checkUpdates(): Promise<UpdateStatus>;
+      sounds: { status(): SoundThemeStatus | undefined; preview(id: SoundActionId, volume?: number): void };
     };
   }
 }
@@ -55,6 +61,7 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
   let media: ReturnType<typeof installStreamDiagnostics> | undefined;
   let theme: ReturnType<typeof createThemeController> | undefined;
   let indicator: ReturnType<typeof createStreamIndicator> | undefined;
+  let sounds: ReturnType<typeof createSoundThemeController> | undefined;
   let updateStatus:UpdateStatus={state:"idle",installed:VERSION};
   const listeners=new Set<()=>void>();
   const slots=new Map<HTMLElement,HostSlot>();
@@ -67,6 +74,8 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
     reset:async()=>{await saveQueue;settings=validateSettings(await native.resetSettings());persistenceError=false;applyFeatures();notify();},
     checkUpdates,updateStatus:()=>({...updateStatus}),openRelease:()=>native.openRelease(),
     capabilities:()=>({settings:!!modules.get("HostSettings"),controls:!!hostControls()}),
+    soundStatus:()=>sounds?.status()??{state:"off",available:!!modules.get("SoundEffects"),mapped:0,total:16,message:""},
+    previewSound:id=>sounds?.preview(id),
   };
   plugins.register({ id: "StreamDiagnostics", start(scope) {
     const collector = installStreamDiagnostics(); media = collector;
@@ -80,16 +89,20 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
     scope.add(() => style.remove());
   }});
   plugins.register({id:"ClientFeatures",start(scope){
-    scope.add(()=>{theme?.stop();indicator?.stop();theme=undefined;indicator=undefined;});
+    scope.add(()=>{sounds?.stop();theme?.stop();indicator?.stop();theme=undefined;indicator=undefined;sounds=undefined;});
     theme=createThemeController();theme.apply(settings.themeId,settings.customTheme);
     indicator=createStreamIndicator({enabled:settings.indicatorEnabled,detailed:settings.indicatorDetailed});
-    const timer=setInterval(()=>{refreshIndicator();notify();},2000);
+    sounds=createSoundThemeController({adapter:()=>modules.get<SoundEffects>("SoundEffects"),load:()=>native.loadSoundPack(),
+      assets:DISCORD_SOUND_ASSETS,mapping:DISCORD_ACTION_MAP,change:notify,
+      downloadStatus:()=>native.diagnostics().soundPack as SoundPackDownloadStatus});
+    const timer=setInterval(()=>{refreshIndicator();sounds?.refresh();notify();},2000);
     scope.add(()=>{clearInterval(timer);});
   }});
   function applyFeatures(){
     if(!running)return;
     theme?.apply(settings.themeId,settings.customTheme);
     indicator?.setEnabled(settings.indicatorEnabled);indicator?.setDetailed(settings.indicatorDetailed);
+    sounds?.apply(settings.soundThemeEnabled);
     applyCss();
   }
   function refreshIndicator(){
@@ -104,7 +117,7 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
     return { version: VERSION, ready: running, plugins: plugins.status(), persistenceError,
       desktop: native.diagnostics(), modules: modules.diagnostics(),
       nativeQuality: !!modules.get<{nativeQuality:boolean}>("ScreenShareSettings")?.nativeQuality,
-      features:features.capabilities(),update:{...updateStatus},
+      features:features.capabilities(),update:{...updateStatus},sounds:sounds?.status(),
       streams: media?.snapshot(), stream1440p: "not-verified" };
   }
   async function saveSettings(patch: Partial<Settings>) {
@@ -167,6 +180,7 @@ if (location.origin === "https://lolka.app" && window === window.top && window.L
     return()=>{slot.dispose?.();if(slots.get(container)===slot)slots.delete(container);};
   }
   const api = { version: VERSION, bootAt: performance.now(), ready: false, modules, start, stop,
+    sounds:{status:()=>sounds?.status(),preview:(id:SoundActionId,volume=0.5)=>{if(!sounds)throw new Error("Sound module is not ready");sounds.preview(id,volume);}},
     mountSettings:(container:HTMLElement)=>mountSlot(container,"settings"),
     mountStreamMenu:(container:HTMLElement,props:StreamMenuProps)=>mountSlot(container,"stream",props),checkUpdates,
     mountStreamTools:(container:HTMLElement,props:StreamToolsProps)=>mountSlot(container,"tools",props),

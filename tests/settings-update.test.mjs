@@ -57,6 +57,24 @@ test('legacy migration preserves previous preferences and backs up exact origina
   });
 });
 
+test('pre-sound settings keep their palette and quality while sound choice persists across reopened stores', async () => {
+  await temporary(async directory => {
+    const legacy = { ...defaults(), themeId:'custom', customTheme:{mode:'light',colors:['#0088ff'],saturation:45},
+      profile:{resolution:'1440p',fps:60,codec:'AV1',bitrateMbps:16} };
+    delete legacy.soundThemeEnabled;
+    const file=path.join(directory,'settings.json'), original=JSON.stringify(legacy);
+    await fs.writeFile(file,original);
+    const store=createSettingsStore(directory), value=store.read();
+    assert.equal(value.soundThemeEnabled,false);assert.equal(await fs.readFile(file,'utf8'),original);
+    assert.deepEqual(value.customTheme,legacy.customTheme);assert.deepEqual(value.profile,legacy.profile);
+    store.write({...value,soundThemeEnabled:true});
+    const reopened=createSettingsStore(directory);assert.equal(reopened.read().soundThemeEnabled,true);
+    assert.throws(()=>reopened.write({...reopened.read(),soundThemeEnabled:'true'}),/Invalid feature toggle/);
+    assert.equal(createSettingsStore(directory).read().soundThemeEnabled,true);
+    assert.equal(reopened.reset().soundThemeEnabled,false);
+  });
+});
+
 test('missing settings write atomically and malformed or future schemas remain untouched until explicit reset', async () => {
   await temporary(async directory => {
     const store = createSettingsStore(directory); const file = path.join(directory, 'settings.json');

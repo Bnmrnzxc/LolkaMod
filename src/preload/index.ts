@@ -9,6 +9,7 @@ if (process.isMainFrame && location.origin === "https://lolka.app") {
     resetSettings: () => ipcRenderer.invoke("lolkamod:settings:reset"),
     checkUpdates: () => ipcRenderer.invoke("lolkamod:updates:check"),
     openRelease: () => ipcRenderer.invoke("lolkamod:updates:open"),
+    loadSoundPack: () => ipcRenderer.invoke("lolkamod:sounds:load"),
     diagnostics: () => ({ version: VERSION, electron: process.versions.electron,
       sandboxed: process.sandboxed, contextIsolated: process.contextIsolated,
       clipboardAvailable: typeof clipboard?.readText === "function" && typeof clipboard?.writeText === "function",

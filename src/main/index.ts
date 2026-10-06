@@ -6,6 +6,9 @@ import { enableSourceAdapter } from "./source-adapter";
 import { createSettingsStore } from "./settings-store";
 import { createUpdateService } from "./update-service";
 import { RELEASES_URL } from "../shared/updates";
+import { createBundledSoundPackService } from "./bundled-sound-pack-service";
+import { DISCORD_SOUND_ASSETS } from "../shared/discord-sounds";
+import bundledDiscordSounds from "../../assets/sounds/discord/classic.json";
 const electron = require("electron");
 const { app, ipcMain } = electron;
 const resources = process.resourcesPath;
@@ -40,6 +43,7 @@ function evidence() {
 const settingsDir = path.join(app.getPath("userData"), "lolkamod");
 const settingsStore = createSettingsStore(settingsDir);
 const updates = createUpdateService(VERSION);
+let soundPack: ReturnType<typeof createBundledSoundPackService> | undefined;
 const readSettings = settingsStore.read;
 function allowed(event: any) {
   // An iframe or another origin cannot invoke a privileged mod endpoint.
@@ -58,7 +62,7 @@ if (!disabled) {
     return settings;
   });
   ipcMain.on("lolkamod:diagnostics", (event: any) => {
-    event.returnValue = allowed(event) ? { testMode, settingsStorage: settingsStore.status(), sourceAdapter: adapterReports.get(event.sender.id) ?? { status: "not-started" } } : null;
+    event.returnValue = allowed(event) ? { testMode, settingsStorage: settingsStore.status(), sourceAdapter: adapterReports.get(event.sender.id) ?? { status: "not-started" }, soundPack: soundPack?.status() ?? { state: "idle" } } : null;
   });
   ipcMain.handle("lolkamod:settings:reset", (event: any) => {
     if (!allowed(event)) throw new Error("Forbidden sender");
@@ -72,7 +76,18 @@ if (!disabled) {
     if (!allowed(event)) throw new Error("Forbidden sender");
     return electron.shell.openExternal(updates.status().url ?? RELEASES_URL);
   });
-  app.on("before-quit", () => updates.stop());
+  ipcMain.handle("lolkamod:sounds:load", async (event: any) => {
+    if (!allowed(event)) throw new Error("Forbidden sender");
+    // The installer contains the complete pack. Enabling sounds never needs a network request.
+    soundPack ??= createBundledSoundPackService(DISCORD_SOUND_ASSETS, bundledDiscordSounds);
+    try { return await soundPack.load(); }
+    finally {
+      // Only fixed status codes and catalog keys are saved. No account data, URLs or raw errors.
+      try { fs.mkdirSync(settingsDir, { recursive: true }); fs.writeFileSync(path.join(settingsDir, "sounds-status.json"), JSON.stringify({ version: VERSION, ...soundPack.status() }, null, 2)); }
+      catch { /* Diagnostics cannot interrupt the sound load. */ }
+    }
+  });
+  app.on("before-quit", () => { updates.stop();soundPack?.stop(); });
 }
 
 // Retain the host updater object and events, but prevent replacing this prototype.

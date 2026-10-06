@@ -3,6 +3,7 @@ import { DEFAULT_CUSTOM_THEME, normalizeCustomTheme, type CustomTheme } from "..
 import { mountCustomThemeEditor } from "./custom-theme-editor";
 import type { Settings } from "../shared/settings";
 import type { UpdateStatus } from "../shared/updates";
+import { SOUND_ACTIONS, type SoundActionId, type SoundThemeStatus } from "../shared/sounds";
 
 export interface FeatureSettingsOptions {
   settings(): Settings;
@@ -13,6 +14,8 @@ export interface FeatureSettingsOptions {
   updateStatus(): UpdateStatus;
   openRelease(): Promise<void>;
   capabilities(): { settings: boolean; controls: boolean };
+  soundStatus?(): SoundThemeStatus;
+  previewSound?(id: SoundActionId): void;
 }
 
 const FEATURE_STYLES = `
@@ -23,6 +26,7 @@ const FEATURE_STYLES = `
   .feature-settings button:focus-visible{outline:2px solid var(--color-brand-primary,#65b9dc);outline-offset:3px}
   .feature-settings input{accent-color:var(--color-brand-primary,#65b9dc)}
   .feature-settings .feature-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .feature-settings .sound-preview select{font:inherit;color:inherit;background:var(--color-bg-input,#252332);border:1px solid var(--color-border-secondary,#555066);border-radius:8px;padding:8px;max-width:100%}
   .feature-settings p{margin:0;color:var(--color-text-secondary,#bdb6cd);font-size:12px}
   .feature-settings .theme-picker{display:grid;gap:10px;min-width:0;padding:12px;border:1px solid var(--color-border-primary,#3b394c);border-radius:10px}
   .feature-settings .theme-heading{margin:0;font:inherit;font-weight:650}
@@ -60,7 +64,7 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
     catch { if (!stopped) status.textContent = saveError; }
     if (!stopped) refresh();
   }
-  function toggle(key: "indicatorEnabled" | "indicatorDetailed" | "streamMenuEnabled", text: string) {
+  function toggle(key: "indicatorEnabled" | "indicatorDetailed" | "streamMenuEnabled" | "soundThemeEnabled", text: string) {
     const label = doc.createElement("label"); label.textContent = text;
     const input = doc.createElement("input"); input.type = "checkbox"; input.dataset.setting = key;
     input.addEventListener("change", () => void save({ [key]: input.checked }), { signal });
@@ -176,6 +180,22 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
   toggle("indicatorEnabled", "Индикатор качества видео");
   toggle("indicatorDetailed", "Подробные метрики");
   toggle("streamMenuEnabled", "Меню кнопки стрима");
+  const soundStatus = doc.createElement("p"); soundStatus.dataset.soundStatus = "";
+  soundStatus.setAttribute("role", "status"); soundStatus.setAttribute("aria-live", "polite");
+  const soundPreview = doc.createElement("div"); soundPreview.className = "feature-actions sound-preview";
+  const soundChoice = doc.createElement("select"); soundChoice.setAttribute("aria-label", "Звук для прослушивания");
+  for (const action of SOUND_ACTIONS) {
+    const option = doc.createElement("option"); option.value = action.id; option.textContent = action.title; soundChoice.append(option);
+  }
+  soundChoice.value = "messageSound";
+  const listen = doc.createElement("button"); listen.type = "button"; listen.textContent = "Прослушать";
+  listen.dataset.soundPreview = "";
+  listen.addEventListener("click", () => {
+    try { options.previewSound?.(soundChoice.value as SoundActionId); }
+    catch { soundStatus.textContent = "Не удалось воспроизвести звук."; }
+  }, { signal });
+  soundPreview.append(soundChoice, listen);
+  if (options.soundStatus && options.previewSound) { toggle("soundThemeEnabled", "Звуки Discord"); root.append(soundStatus, soundPreview); }
   const support = doc.createElement("p"); root.append(support);
   const actions = doc.createElement("div"); actions.className = "feature-actions";
   function button(text: string, action: () => void) {
@@ -240,6 +260,13 @@ export function mountFeatureSettings(container: HTMLElement, options: FeatureSet
     choiceTitle.textContent = selected.title; choiceDescription.textContent = selected.description;
     confirm.disabled = themeSaving || resetting;
     for (const [key, input] of checks) input.checked = Boolean(settings[key]);
+    const soundModel = options.soundStatus?.();
+    if (soundModel) {
+      soundStatus.textContent = soundModel.message;
+      const soundToggle = checks.get("soundThemeEnabled");
+      if (soundToggle) soundToggle.disabled = resetting || !soundModel.available;
+      soundChoice.disabled = listen.disabled = resetting || soundModel.state !== "active";
+    }
     const capability = options.capabilities();
     support.textContent = `Встроенные настройки: ${capability.settings ? "доступны" : "резервная панель"}. Меню стрима: ${capability.controls ? "доступно" : "не поддержано этой сборкой"}.`;
   }

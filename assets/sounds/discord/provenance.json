@@ -1,0 +1,112 @@
+{
+  "source": "Public unauthenticated Discord web assets",
+  "bootstrapSha256": "591665b7c86f9f500fa18d1b8c831f75dc628b87540fccffab26ab8fd1e127ab",
+  "soundContextModuleId": "696354",
+  "assets": [
+    {
+      "key": "user_join",
+      "url": "https://discord.com/assets/b135ff6c8e091b43.mp3",
+      "sha256": "d30746caf3e4675ae0d822d51461a9ad24832afa1e20179c3c2fc7b50b911a26",
+      "bytes": 47179,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "user_leave",
+      "url": "https://discord.com/assets/7b9a183742515fc2.mp3",
+      "sha256": "9fd71c2d8112c82a7fb316602bb1645bc65f5edfa260110bbaae80090fbe9df0",
+      "bytes": 41955,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "mute",
+      "url": "https://discord.com/assets/2d3b4ba32c34c862.mp3",
+      "sha256": "f6194168829b0701e8b40817d5173afed4b3b1e0b5074ab82ca31d97e4cb65c1",
+      "bytes": 22102,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "unmute",
+      "url": "https://discord.com/assets/e74c4a06134a20e4.mp3",
+      "sha256": "1572881f90703c1e0cd138fe7486d2e53c0ac5d8509cade32029fb31650b9304",
+      "bytes": 22102,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "deafen",
+      "url": "https://discord.com/assets/529ff198eac567af.mp3",
+      "sha256": "dee4468bbafb321b159dcab42f52d1fbfb1d01358437e0a3088c3345979211b8",
+      "bytes": 32551,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "undeafen",
+      "url": "https://discord.com/assets/b150f03c89944403.mp3",
+      "sha256": "690b64977594baa41c7978d76259224f67799ba337df2d1045dce970ef82b243",
+      "bytes": 35685,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "camera_off",
+      "url": "https://discord.com/assets/b1dd204729fe78b4.mp3",
+      "sha256": "fe81a2ab7b0581736108c5fc79ab7884ab2e5211a50b69f56badde08d41e7bfb",
+      "bytes": 84668,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "camera_on",
+      "url": "https://discord.com/assets/855607d0932ea396.mp3",
+      "sha256": "faeb721a072575c96d1e140aaecd469bf3f7278347596968dddf22fdb65005bf",
+      "bytes": 41831,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "ptt_start",
+      "url": "https://discord.com/assets/f5c8ec31889c5317.mp3",
+      "sha256": "9a06714cbc4fffe5c181be5499d08a3de31bcd21bfd0678c1a42764c0db4c99a",
+      "bytes": 1686,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "ptt_stop",
+      "url": "https://discord.com/assets/34b5969be3a063ba.mp3",
+      "sha256": "e470a8a450681b6ef92251c974fc295b598445faf1749697765a9b293f50c0e7",
+      "bytes": 1633,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "message1",
+      "url": "https://discord.com/assets/3ed22d14f3c30bc4.mp3",
+      "sha256": "31ad0482eee7770597b8aa723a80fd041ade0b076679b12293664f1f1777211b",
+      "bytes": 17922,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "call_calling",
+      "url": "https://discord.com/assets/5146737af413d88e.mp3",
+      "sha256": "c3999dbbbea7fca113d6f396b81d6054dd2dd6df79f442b62dfb74afddd36934",
+      "bytes": 100465,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "call_ringing",
+      "url": "https://discord.com/assets/c2a7111bb44b8da0.mp3",
+      "sha256": "a2365a04f839099538271d06889147475ceef0845f8cc010425618f5dc412880",
+      "bytes": 130785,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "stream_started",
+      "url": "https://discord.com/assets/abe52a3c92953edb.mp3",
+      "sha256": "b5cb29d5d5cc0e8e22fa014bac4a1c2d601f6890ae6db1c18d4b6310283a3271",
+      "bytes": 72832,
+      "mimeType": "audio/mpeg"
+    },
+    {
+      "key": "stream_ended",
+      "url": "https://discord.com/assets/cbff07b5a83e0321.mp3",
+      "sha256": "a724e183167405783122b997def6b3e6f53020957031224b27c434d6df8ef75f",
+      "bytes": 67539,
+      "mimeType": "audio/mpeg"
+    }
+  ]
+}
