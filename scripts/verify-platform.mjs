@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { extractFile } from '@electron/asar';
@@ -109,22 +110,59 @@ async function waitForRuntimeReady(cdp, timeoutMs = 60_000) {
   throw new Error(`The vendor renderer did not finish loading its host and LolkaMod bridges within ${timeoutMs / 1000}s${lastError ? `: ${lastError.message}` : ''}`);
 }
 
-async function stopOwnedProcess(child) {
-  if (!child.pid || child.exitCode !== null) return;
+async function remainingMacHelpers(root) {
+  const prefix = await fs.realpath(root) + '/Contents/';
+  let output;
+  try {
+    output = (await promisify(execFile)('/usr/sbin/lsof', ['-n', '-P', '-Fpn', '-a', '-d', 'txt', '-c', 'Lolka'])).stdout;
+  } catch (error) {
+    if (error.code !== 1 || error.stderr?.trim()) throw error;
+    output = error.stdout ?? '';
+  }
+  const pids = new Set();
+  let pid;
+  for (const line of output.split('\n')) {
+    if (/^p\d+$/.test(line)) pid = Number(line.slice(1));
+    else if (pid && pid !== process.pid && line.startsWith('n' + prefix)) pids.add(pid);
+  }
+  return [...pids];
+}
+
+async function stopOwnedProcess(child, root) {
+  if (!child.pid) return;
+  const alive = () => {
+    if (process.platform === 'win32') return child.exitCode === null;
+    try { process.kill(-child.pid, 0); return true; }
+    catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+  };
   const signalOwned = signal => {
     try {
       if (process.platform !== 'win32') process.kill(-child.pid, signal);
       else child.kill(signal);
     } catch (error) { if (error.code !== 'ESRCH') throw error; }
   };
-  signalOwned('SIGTERM');
-  const exited = await Promise.race([
-    new Promise(resolve => child.once('exit', () => resolve(true))),
-    delay(8_000).then(() => false),
-  ]);
-  if (!exited) {
+  if (alive()) signalOwned('SIGTERM');
+  let deadline = Date.now() + 8_000;
+  while (alive() && Date.now() < deadline) await delay(100);
+  if (alive()) {
     signalOwned('SIGKILL');
-    await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(3_000)]);
+    deadline = Date.now() + 3_000;
+    while (alive() && Date.now() < deadline) await delay(100);
+  }
+  if (alive()) throw new Error('The owned vendor process group did not exit');
+  // macOS may move Electron helpers out of the initial process group. This
+  // exclusive, validated fixture belongs to this run; never match other bundles.
+  if (process.platform === 'darwin') {
+    for (const signal of ['SIGTERM', 'SIGKILL']) {
+      const helpers = await remainingMacHelpers(root);
+      if (!helpers.length) return;
+      for (const pid of helpers) {
+        try { process.kill(pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      }
+      const limit = Date.now() + 3_000;
+      while ((await remainingMacHelpers(root)).length && Date.now() < limit) await delay(100);
+    }
+    if ((await remainingMacHelpers(root)).length) throw new Error('The owned Mac fixture helpers did not exit');
   }
 }
 
@@ -168,7 +206,7 @@ async function runRuntime(root, userData, report) {
     };
   } finally {
     cdp?.close();
-    await stopOwnedProcess(child);
+    await stopOwnedProcess(child, root);
   }
 }
 
