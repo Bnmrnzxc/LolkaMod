@@ -11,11 +11,11 @@ namespace LolkaModInstaller
         [STAThread]
         private static int Main(string[] args)
         {
-            if (args.Length == 0)
+            if (args.Length == 0 || args.Length == 2 && args[0] == "--open")
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new MainForm());
+                Application.Run(new MainForm(args.Length == 2 ? args[1] : null));
                 return 0;
             }
             string report = null;

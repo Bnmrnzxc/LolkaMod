@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>LolkaMod — установщик</title>
+  <link rel="stylesheet" href="./renderer.css">
+  <script type="module" src="./renderer.js"></script>
+</head>
+<body>
+  <main class="window-shell">
+    <header class="app-header">
+      <img class="brand-mark" src="./logo.png" alt="LolkaMod" width="42" height="42">
+      <div class="brand-copy">
+        <h1>LolkaMod</h1>
+        <p>Установщик <span id="installer-version">Загрузка…</span></p>
+      </div>
+      <span id="platform-badge" class="platform-badge" aria-label="Платформа"></span>
+    </header>
+
+    <section class="folder-section" aria-labelledby="folder-heading">
+      <div class="section-heading">
+        <h2 id="folder-heading">Папка Lolka</h2>
+        <span id="folder-hint" class="muted">Выберите установленный клиент</span>
+      </div>
+      <div class="folder-row">
+        <label class="visually-hidden" for="installation-path">Путь к папке Lolka</label>
+        <input id="installation-path" type="text" readonly placeholder="Папка не выбрана" autocomplete="off">
+        <button id="browse-button" class="button button-quiet" type="button">Обзор…</button>
+      </div>
+    </section>
+
+    <button id="install-button" class="button button-primary" type="button" disabled>
+      <span class="button-label">Установить / обновить</span>
+    </button>
+
+    <section class="status-grid" aria-label="Состояние установки">
+      <article class="status-card">
+        <span class="card-label">Клиент</span>
+        <strong id="client-value" class="card-value">—</strong>
+        <span id="client-detail" class="card-detail">Проверка…</span>
+      </article>
+      <article class="status-card">
+        <span class="card-label">Статус</span>
+        <strong id="mod-status-value" class="card-value">—</strong>
+        <span id="mod-status-detail" class="card-detail">Проверка…</span>
+      </article>
+      <article class="status-card">
+        <span class="card-label">Версия мода</span>
+        <strong id="mod-version-value" class="card-value">—</strong>
+        <span id="mod-version-detail" class="card-detail">—</span>
+      </article>
+    </section>
+
+    <div id="inline-status" class="inline-status" role="status" aria-live="polite" aria-atomic="true">
+      <span id="status-indicator" class="status-indicator" aria-hidden="true"></span>
+      <span id="status-message">Проверяем установку…</span>
+    </div>
+
+    <div class="secondary-actions">
+      <button id="uninstall-button" class="button button-secondary" type="button" disabled>Удалить мод</button>
+      <button id="repair-button" class="button button-secondary" type="button" disabled>Восстановить Lolka</button>
+      <button id="check-button" class="button button-link" type="button">Проверить</button>
+    </div>
+
+    <details id="details-panel" class="details-panel">
+      <summary>Подробности</summary>
+      <pre id="details-content" class="details-content">Ожидание результата проверки.</pre>
+    </details>
+  </main>
+
+  <dialog id="update-dialog" class="update-dialog" aria-labelledby="update-title" aria-describedby="update-description">
+    <div class="dialog-mark" aria-hidden="true">↻</div>
+    <h2 id="update-title">Доступно обновление</h2>
+    <p id="update-description" class="dialog-description">Можно установить новую версию LolkaMod.</p>
+    <dl class="version-comparison">
+      <div><dt id="update-installed-label">Установлено</dt><dd id="update-installed">—</dd></div>
+      <div><dt>Новая версия</dt><dd id="update-target">—</dd></div>
+    </dl>
+    <p id="remote-update-note" class="remote-note" hidden>Ссылка откроет страницу релиза. Установщик не скачивает обновление автоматически.</p>
+    <div class="dialog-actions">
+      <button id="skip-update-button" class="button button-secondary" type="button">Пропустить</button>
+      <button id="apply-update-button" class="button button-primary" type="button">Обновить</button>
+    </div>
+  </dialog>
+</body>
+</html>

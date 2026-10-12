@@ -1,4 +1,4 @@
-name: Build experimental Windows installer
+name: Build and verify installers
 on:
   push:
   pull_request:
@@ -26,3 +26,62 @@ jobs:
             release/*.sha256
             README.md
             docs/stream-test.md
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install build and desktop test dependencies
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm xvfb xauth libgtk-3-0 libnss3 libasound2t64 libgbm1 libpipewire-0.3-0 libpulse0
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: node scripts/fetch-platform-fixtures.mjs
+      - name: Prepare the vendor sandbox in isolated CI copies
+        run: |
+          sudo chown root:root .runtime/platform-fixtures/{deb,rpm}/opt/Lolka/chrome-sandbox
+          sudo chmod 4755 .runtime/platform-fixtures/{deb,rpm}/opt/Lolka/chrome-sandbox
+      - name: Verify DEB client lifecycle and runtime
+        run: xvfb-run -a node scripts/verify-platform.mjs --root .runtime/platform-fixtures/deb/opt/Lolka --report .runtime/evidence/linux-deb.json --runtime
+      - name: Verify RPM client lifecycle and runtime
+        run: xvfb-run -a node scripts/verify-platform.mjs --root .runtime/platform-fixtures/rpm/opt/Lolka --report .runtime/evidence/linux-rpm.json --runtime
+      - run: npm run build:portable -- --platform linux
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LolkaMod-linux
+          path: |
+            release/portable/*.deb
+            release/portable/*.rpm
+            .runtime/evidence/*.json
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: test "$(uname -m)" = arm64
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: node scripts/fetch-platform-fixtures.mjs
+      - name: Verify Mac client lifecycle, signing and runtime
+        run: node scripts/verify-platform.mjs --root .runtime/platform-fixtures/mac/Lolka.app --report .runtime/evidence/macos-arm64.json --runtime
+      - run: npm run build:portable -- --platform mac
+      - name: Verify installer signature
+        run: codesign --verify --deep --strict 'release/portable/mac-arm64/LolkaMod Installer.app'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LolkaMod-macos-arm64
+          path: |
+            release/portable/*.dmg
+            release/portable/*.zip
+            .runtime/evidence/*.json

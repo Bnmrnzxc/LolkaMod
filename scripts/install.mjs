@@ -8,7 +8,7 @@ import { createPackage, uncache } from '@electron/asar';
 
 // Migration hint only: newer Lolka packages are checked structurally.
 export const SUPPORTED_HASH = 'fd94ecec264d7d7a56a0b5d1bb5ac1e416b6c9a4ee2d171b3704b0b72f0260a8';
-export const DEFAULT_INSTALLATION = path.join(process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? '', 'AppData', 'Local'), 'Programs', 'Lolka');
+export const DEFAULT_INSTALLATION = process.platform === 'darwin' ? '/Applications/Lolka.app' : process.platform === 'linux' ? '/opt/Lolka' : path.join(process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? '', 'AppData', 'Local'), 'Programs', 'Lolka');
 const workspace = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const mainPath = 'dist-js/main.js', preloadPath = 'dist-js/preload.js';
 const shaPattern = /^[a-f0-9]{64}$/, versionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -36,7 +36,7 @@ async function treeHash(folder) {
   await walk(folder, ''); return hash(Buffer.from(items.join('')));
 }
 async function layout(installation) {
-  const root = path.resolve(installation), resources = path.join(root, 'resources');
+  const root = path.resolve(installation), resources = path.join(root, root.endsWith('.app') ? 'Contents/Resources' : 'resources');
   for (let current = root; ; current = path.dirname(current)) { await noLink(current); if (path.dirname(current) === current) break; }
   await noLink(resources);
   const state = { root, resources, archive: path.join(resources, 'app.asar'), backup: path.join(resources, '_app.asar'), mod: path.join(resources, 'lolkamod'), journal: path.join(resources, '.lolkamod-transaction.json') };
@@ -46,6 +46,31 @@ async function layout(installation) {
   return state;
 }
 async function ensureStopped(root) {
+  if (process.platform === 'linux') {
+    const prefix = await fs.realpath(root) + path.sep;
+    for (const pid of await fs.readdir('/proc')) {
+      if (!/^\d+$/.test(pid) || Number(pid) === process.pid) continue;
+      try {
+        const executable = (await fs.readlink(`/proc/${pid}/exe`)).replace(/ \(deleted\)$/, '');
+        if (executable.startsWith(prefix)) throw new Error('Close this Lolka installation before changing its files.');
+      } catch (error) {
+        if (!['ENOENT', 'ESRCH', 'EACCES', 'EPERM', 'EINVAL'].includes(error.code)) throw error;
+      }
+    }
+    return;
+  }
+  if (process.platform === 'darwin') {
+    const prefix = await fs.realpath(root) + '/Contents/';
+    let stdout;
+    try {
+      ({ stdout } = await promisify(execFile)('/usr/sbin/lsof', ['-n', '-P', '-Fpn', '-a', '-d', 'txt', '-c', 'Lolka'], { maxBuffer: 4 * 1024 * 1024 }));
+    } catch (error) {
+      if (error.code !== 1 || error.stderr?.trim()) throw error;
+      stdout = error.stdout ?? '';
+    }
+    if (stdout.split('\n').some(line => line.startsWith('n' + prefix))) throw new Error('Close this Lolka installation before changing its files.');
+    return;
+  }
   const executable = path.join(root, 'Lolka.exe');
   if (process.platform !== 'win32' || !await exists(executable)) return;
   const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
@@ -155,6 +180,7 @@ async function transaction(state, { entry, backup, modSource, preserveBackup = f
     const journal = { schemaVersion: 1, stage: path.basename(stage), archiveBeforeHash: hash(beforeEntry), archiveAfterHash: hash(entry), backupBeforeHash: beforeBackup ? hash(beforeBackup) : null, backupAfterHash: backup ? hash(backup) : null, beforeModHash, afterModHash };
     await ensureStopped(state.root);
     if (hash(await fs.readFile(state.archive)) !== journal.archiveBeforeHash || (beforeModHash != null && await treeHash(state.mod) !== beforeModHash)) throw new Error('Host or mod changed during staging');
+    await state.beforeArchiveChange?.(journal.archiveAfterHash);
     await atomicWrite(state.journal, Buffer.from(JSON.stringify(journal))); journalWritten = true;
     if (backup) await atomicWrite(state.backup, backup); else await fs.rm(state.backup, { force: true });
     if (await exists(state.mod)) await fs.rename(state.mod, path.join(stage, 'mod.removed'));
@@ -187,14 +213,16 @@ async function locked(installation, operation) {
 }
 export async function install(installation, options = {}) {
   if (options.testMode && typeof options.userData !== 'string') throw new Error('testMode requires an explicit separate userData directory');
+  const payloadDirectory = path.resolve(options.payloadDirectory ?? path.join(workspace, 'dist'));
   return locked(installation, async state => {
+    state.beforeArchiveChange = options.beforeArchiveChange;
     const current = await classify(state), original = current.liveHost ? current.entry : current.backup.bytes, host = current.liveHost ?? current.backup.host;
     const stage = path.join(state.resources, `.lolkamod-stage-${crypto.randomUUID()}`); await fs.mkdir(stage);
     try {
       const mod = path.join(stage, 'next'); await fs.mkdir(mod);
-      for (const file of ['main.cjs', 'build.json']) await fs.copyFile(path.join(workspace, 'dist', file), path.join(mod, file));
+      for (const file of ['main.cjs', 'build.json']) await fs.copyFile(path.join(payloadDirectory, file), path.join(mod, file));
       const build = JSON.parse(await fs.readFile(path.join(mod, 'build.json'), 'utf8'));
-      const modPreload = await fs.readFile(path.join(workspace, 'dist', 'preload.js'), 'utf8');
+      const modPreload = await fs.readFile(path.join(payloadDirectory, 'preload.js'), 'utf8');
       await fs.writeFile(path.join(mod, 'preload.js'), `// Original preload retained in its own scope.\n(function(){\n${host.originalPreload}\n})();\n${modPreload}`);
       const config = { testMode: options.testMode === true, baseline: options.baseline === true, hostMain: host.main, hostPreload: host.preload, ...(options.testMode ? { userData: path.resolve(options.userData) } : {}) };
       await fs.writeFile(path.join(mod, 'config.json'), JSON.stringify(config, null, 2));
@@ -224,9 +252,18 @@ async function removeInstallation(state, repairMode) {
   await transaction(state, { entry: backup.bytes, backup: null, modSource: null, expectedArchiveHash: currentHash, expectedBackupHash: backup.host.originalHash });
   return { restored: true, repaired: repairMode, originalHash: backup.host.originalHash, hostVersion: backup.host.version };
 }
-export async function uninstall(installation) { return locked(installation, state => removeInstallation(state, false)); }
-export async function repair(installation) { return locked(installation, state => removeInstallation(state, true)); }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+export async function uninstall(installation, options = {}) { return locked(installation, state => { state.beforeArchiveChange = options.beforeArchiveChange; return removeInstallation(state, false); }); }
+export async function repair(installation, options = {}) { return locked(installation, state => { state.beforeArchiveChange = options.beforeArchiveChange; return removeInstallation(state, true); }); }
+export async function inspectInstallation(installation) {
+  const state = await layout(installation), current = await classify(state);
+  const host = current.liveHost ?? current.backup.host;
+  return { found: true, installed: !current.liveHost, hostVersion: host.version,
+    ...(current.liveHost ? {} : { modVersion: current.manifest.modVersion, shimHash: current.manifest.shimHash }),
+    originalHash: host.originalHash, recoveryRequired: await exists(state.journal) };
+}
+export const ensureInstallationStopped = ensureStopped;
+export const getInstallationLayout = layout;
+if (path.basename(fileURLToPath(import.meta.url)) === 'install.mjs' && process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [command, target = DEFAULT_INSTALLATION] = process.argv.slice(2);
   try {
     if (command === 'install') console.log(JSON.stringify(await install(target)));

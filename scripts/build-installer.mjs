@@ -52,11 +52,15 @@ const appIcon = path.join(brand, 'app.ico');
 const brandLogo = path.join(brand, 'logo.png');
 const manifest = path.join(root, 'Installer', 'app.manifest');
 await fs.access(appIcon); await fs.access(brandLogo); await fs.access(manifest);
-const source = ['Program.cs', 'InstallerBackend.cs', 'MainForm.cs'].map(f => path.join(root, 'Installer', f));
+const assemblyInfo = path.join(staging, 'AssemblyInfo.cs');
+const buildVersion = path.join(staging, 'InstallerBuild.cs');
+await fs.writeFile(buildVersion, `namespace LolkaModInstaller { internal static class InstallerBuild { internal const string Version = ${JSON.stringify(pkg.version)}; } }\n`);
+await fs.writeFile(assemblyInfo, `using System.Reflection;\n[assembly: AssemblyInformationalVersion("${pkg.version}")]\n[assembly: AssemblyFileVersion("${pkg.version.split('-')[0]}.0")]\n`);
+const source = ['Program.cs', 'InstallerBackend.cs', 'MainForm.cs', 'InstallerUpdates.cs', 'UpdateDialog.cs'].map(f => path.join(root, 'Installer', f));
 await run(compiler, ['/nologo', '/target:winexe', '/platform:x64', '/optimize+', `/out:${exe}`,
   `/win32icon:${appIcon}`, `/win32manifest:${manifest}`, `/resource:${appIcon},LolkaMod.Brand.App.ico`, `/resource:${brandLogo},LolkaMod.Brand.Logo.png`,
   '/r:System.dll', '/r:System.Core.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', '/r:System.Web.Extensions.dll',
-  '/r:System.IO.Compression.dll', '/r:System.IO.Compression.FileSystem.dll', `/resource:${zipPath},LolkaMod.Payload.zip`, ...source, integrity], { windowsHide: true });
+  '/r:System.IO.Compression.dll', '/r:System.IO.Compression.FileSystem.dll', `/resource:${zipPath},LolkaMod.Payload.zip`, ...source, integrity, assemblyInfo, buildVersion], { windowsHide: true });
 const bytes = await fs.readFile(exe);
 const hash = crypto.createHash('sha256').update(bytes).digest('hex');
 await fs.writeFile(path.join(output, `LolkaModInstaller-${pkg.version}.sha256`), `${hash}  ${path.basename(exe)}\n`);

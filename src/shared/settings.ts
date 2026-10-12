@@ -1,7 +1,7 @@
 import type { StreamProfile } from "./streams";
 import { DEFAULT_CUSTOM_THEME, isThemeId, normalizeCustomTheme, type CustomTheme, type ThemeId } from "./themes";
 export type { ThemeId } from "./themes";
-export const VERSION = "0.5.4";
+export const VERSION = "0.6.0";
 export const MAX_CSS_LENGTH = 128 * 1024;
 export interface Settings { schemaVersion: 1; enabled: boolean; customCss: string; qualityEnabled: boolean; profile: StreamProfile;
   themeId: ThemeId; customTheme: CustomTheme; indicatorEnabled: boolean; indicatorDetailed: boolean; streamMenuEnabled: boolean; soundThemeEnabled: boolean }

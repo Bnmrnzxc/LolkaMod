@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -25,9 +26,13 @@ namespace LolkaModInstaller
         private Image brandImage;
         private Icon brandIcon;
         private bool busy, detailsVisible;
+        private bool updateCheckBusy, downloading;
+        private InstallerBackend.InstallStatus lastInspection;
+        private readonly CancellationTokenSource updateCancellation = new CancellationTokenSource();
         private int collapsedHeight;
 
-        public MainForm()
+        public MainForm() : this(null) { }
+        public MainForm(string installation)
         {
             Text = "Установщик LolkaMod";
             StartPosition = FormStartPosition.CenterScreen;
@@ -76,7 +81,7 @@ namespace LolkaModInstaller
 
             clientTile = new StatusTile("Клиент", "Проверка…", 0);
             modTile = new StatusTile("Статус", "Проверка…", 1);
-            versionTile = new StatusTile("Версия мода", InstallerBackend.ModVersion, 2);
+            versionTile = new StatusTile("Установлено", "Проверка…", 2);
             banner = new StatusBanner();
             banner.SetMessage("Готово к проверке", "Закройте Lolka перед установкой или восстановлением.", StatusTone.Neutral);
             detailsPanel = new RoundedPanel(Color.FromArgb(30, 31, 33));
@@ -87,6 +92,7 @@ namespace LolkaModInstaller
             detailsPanel.Controls.Add(statusTextBox);
             try { installationPathTextBox.Text = InstallerBackend.DefaultInstallation ?? String.Empty; }
             catch { installationPathTextBox.Text = String.Empty; }
+            if (installation != null) installationPathTextBox.Text = Path.GetFullPath(installation);
             BuildLayout();
             WireEvents();
             Shown += OnShown;
@@ -129,6 +135,7 @@ namespace LolkaModInstaller
                 e.Cancel = true;
                 banner.SetMessage("Операция выполняется", "Дождитесь завершения, затем закройте установщик.", StatusTone.Warning);
             }
+            if (!e.Cancel) updateCancellation.Cancel();
             base.OnFormClosing(e);
         }
 
@@ -188,8 +195,8 @@ namespace LolkaModInstaller
             titles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             titles.RowStyles.Add(new RowStyle(SizeType.Percent, 60F));
             titles.RowStyles.Add(new RowStyle(SizeType.Percent, 40F));
-            titles.Controls.Add(TextLabel("LolkaMod " + InstallerBackend.ModVersion, TextColor, 15F, FontStyle.Bold), 0, 0);
-            titles.Controls.Add(TextLabel("Установка и обслуживание", MutedColor, 9F, FontStyle.Regular), 0, 1);
+            titles.Controls.Add(TextLabel("LolkaMod", TextColor, 15F, FontStyle.Bold), 0, 0);
+            titles.Controls.Add(TextLabel("Установщик · версия " + InstallerBackend.ModVersion, MutedColor, 9F, FontStyle.Regular), 0, 1);
             header.Controls.Add(logo, 0, 0); header.Controls.Add(titles, 2, 0);
 
             TableLayoutPanel pathGroup = Table(1, 2);
@@ -238,11 +245,21 @@ namespace LolkaModInstaller
         private void WireEvents()
         {
             browseButton.Click += OnBrowse;
-            installButton.Click += delegate { RunBackend("Установка", delegate(string path) { return InstallerBackend.Install(path); }); };
-            uninstallButton.Click += delegate { RunBackend("Удаление мода", delegate(string path) { return InstallerBackend.Uninstall(path); }); };
-            repairButton.Click += delegate { RunBackend("Восстановление", delegate(string path) { return InstallerBackend.Repair(path); }); };
-            checkButton.Click += delegate { RunBackend("Проверка", delegate(string path) { return InstallerBackend.Status(path); }); };
+            installButton.Click += async delegate { await InstallBundled(); };
+            uninstallButton.Click += async delegate { await RunBackend("Удаление мода", delegate(string path) { return InstallerBackend.Uninstall(path); }); };
+            repairButton.Click += async delegate { await RunBackend("Восстановление", delegate(string path) { return InstallerBackend.Repair(path); }); };
+            checkButton.Click += async delegate { await RunBackend("Проверка", delegate(string path) { return InstallerBackend.Status(path); }); await CheckUpdates(); };
             detailsButton.Click += delegate { ToggleDetails(); };
+        }
+        private Task InstallBundled()
+        {
+            return RunBackend("Установка", delegate(string path)
+            {
+                InstallerBackend.InstallStatus status = InstallerBackend.InspectStatus(path);
+                if (status.ModInstalled && !String.IsNullOrEmpty(status.InstalledModVersion) && InstallerUpdates.CompareVersions(status.InstalledModVersion, InstallerBackend.ModVersion) > 0)
+                    throw new InvalidOperationException("В Lolka установлена более новая версия мода. Нажмите «Проверить» и обновите установщик.");
+                return InstallerBackend.Install(path);
+            });
         }
         private void ToggleDetails()
         {
@@ -256,11 +273,12 @@ namespace LolkaModInstaller
         {
             using (Graphics graphics = CreateGraphics()) return (int)Math.Round(value * graphics.DpiY / 96F);
         }
-        private void OnShown(object sender, EventArgs e)
+        private async void OnShown(object sender, EventArgs e)
         {
-            RunBackend("Проверка", delegate(string path) { return InstallerBackend.Status(path); });
+            await RunBackend("Проверка", delegate(string path) { return InstallerBackend.Status(path); });
+            await CheckUpdates();
         }
-        private void OnBrowse(object sender, EventArgs e)
+        private async void OnBrowse(object sender, EventArgs e)
         {
             using (FolderBrowserDialog dialog = new FolderBrowserDialog())
             {
@@ -269,7 +287,7 @@ namespace LolkaModInstaller
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
                     installationPathTextBox.Text = dialog.SelectedPath;
-                    RunBackend("Проверка", delegate(string path) { return InstallerBackend.Status(path); });
+                    await RunBackend("Проверка", delegate(string path) { return InstallerBackend.Status(path); });
                 }
             }
         }
@@ -278,7 +296,7 @@ namespace LolkaModInstaller
             internal string Message, InspectionError;
             internal InstallerBackend.InstallStatus Status;
         }
-        private async void RunBackend(string operationName, Func<string, string> operation)
+        private async Task RunBackend(string operationName, Func<string, string> operation)
         {
             if (busy) return;
             string path = installationPathTextBox.Text;
@@ -293,59 +311,151 @@ namespace LolkaModInstaller
                     try { outcome.Status = InstallerBackend.InspectStatus(path); }
                     catch (Exception error) { outcome.InspectionError = error.Message; }
                     return outcome;
-                }).ConfigureAwait(false);
-                PostToUi(delegate
-                {
-                    statusTextBox.Text = String.IsNullOrEmpty(result.Message) ? "Операция завершена." : result.Message;
-                    if (result.Status == null)
-                    {
-                        ClearInspection(); statusTextBox.AppendText("\r\nПроверка состояния: " + result.InspectionError);
-                        banner.SetMessage("Операция завершена", "Состояние не подтверждено. Откройте подробности.", StatusTone.Warning);
-                    }
-                    else
-                    {
-                        ApplyInspection(result.Status);
-                        if (!result.Status.RecoveryPending && !result.Status.NeedsRepatch)
-                        {
-                            if (operationName == "Установка" && result.Status.ModInstalled) banner.SetMessage("Мод установлен", "Откройте Lolka. После обновления клиента повторите установку.", StatusTone.Success);
-                            else if (operationName == "Удаление мода" && !result.Status.ModInstalled) banner.SetMessage("Мод удалён", "Теперь можно запустить обычную Lolka.", StatusTone.Success);
-                            else if (operationName == "Восстановление" && result.Status.ClientFound && !result.Status.ModInstalled) banner.SetMessage("Lolka восстановлена", "Оригинальные файлы клиента восстановлены.", StatusTone.Success);
-                        }
-                    }
-                    FinishOperation();
                 });
+                if (IsDisposed || Disposing) return;
+                statusTextBox.Text = String.IsNullOrEmpty(result.Message) ? "Операция завершена." : result.Message;
+                if (result.Status == null)
+                {
+                    ClearInspection(); statusTextBox.AppendText("\r\nПроверка состояния: " + result.InspectionError);
+                    banner.SetMessage("Операция завершена", "Состояние не подтверждено. Откройте подробности.", StatusTone.Warning);
+                }
+                else
+                {
+                    ApplyInspection(result.Status);
+                    if (!result.Status.RecoveryPending && !result.Status.NeedsRepatch)
+                    {
+                        if (operationName == "Установка" && result.Status.ModInstalled) banner.SetMessage("Мод установлен", "Откройте Lolka. После обновления клиента повторите установку.", StatusTone.Success);
+                        else if (operationName == "Удаление мода" && !result.Status.ModInstalled) banner.SetMessage("Мод удалён", "Теперь можно запустить обычную Lolka.", StatusTone.Success);
+                        else if (operationName == "Восстановление" && result.Status.ClientFound && !result.Status.ModInstalled) banner.SetMessage("Lolka восстановлена", "Оригинальные файлы клиента восстановлены.", StatusTone.Success);
+                    }
+                }
+                FinishOperation();
             }
             catch (Exception error)
             {
                 string message = String.IsNullOrEmpty(error.Message) ? "Проверьте папку Lolka и права доступа." : error.Message;
-                PostToUi(delegate
-                {
-                    ClearInspection(); statusTextBox.Text = operationName + " не завершена.\r\n" + message;
-                    banner.SetMessage(operationName == "Проверка" ? "Не удалось проверить Lolka" : "Операция не завершена", message, StatusTone.Error);
-                    FinishOperation();
-                });
+                if (IsDisposed || Disposing) return;
+                ClearInspection(); statusTextBox.Text = operationName + " не завершена.\r\n" + message;
+                banner.SetMessage(operationName == "Проверка" ? "Не удалось проверить Lolka" : "Операция не завершена", message, StatusTone.Error);
+                FinishOperation();
             }
+        }
+        private async Task CheckUpdates()
+        {
+            if (updateCheckBusy || downloading || busy || IsDisposed || updateCancellation.IsCancellationRequested) return;
+            updateCheckBusy = true; SetButtonsEnabled(false);
+            statusTextBox.AppendText("\r\nПроверка обновлений установщика…");
+            try
+            {
+                UpdateRelease release = null;
+                try { release = await Task.Run(delegate { return InstallerUpdates.Check(updateCancellation.Token); }); }
+                catch (Exception error)
+                {
+                    if (updateCancellation.IsCancellationRequested) return;
+                    statusTextBox.AppendText("\r\nНе удалось проверить GitHub. Обновление из этого установщика доступно без сети.");
+                    if (!BundleUpdateAvailable()) banner.SetMessage("Обновления не проверены", "GitHub недоступен. Доступна встроенная версия установщика.", StatusTone.Warning);
+                    if (!(error is System.Net.WebException)) statusTextBox.AppendText("\r\n" + error.Message);
+                }
+                if (IsDisposed || Disposing || updateCancellation.IsCancellationRequested) return;
+                string installed = InstalledVersion();
+                bool remote = release != null && InstallerUpdates.CompareVersions(release.Version, InstallerBackend.ModVersion) > 0
+                    && (installed == null || InstallerUpdates.CompareVersions(release.Version, installed) > 0);
+                if (!remote && !BundleUpdateAvailable())
+                { if (release != null) statusTextBox.AppendText("\r\nНовых версий нет."); return; }
+                string target = remote ? release.Version : InstallerBackend.ModVersion;
+                statusTextBox.AppendText("\r\nДоступен LolkaMod " + target + ".");
+                // No remembered skip or download: this prompt is offered anew each run.
+                using (UpdateDialog dialog = new UpdateDialog(installed, target, !remote))
+                {
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
+                    {
+                        if (remote) await DownloadUpdate(release);
+                        else await InstallBundled();
+                    }
+                    else banner.SetMessage("Обновление отложено", "Доступна версия " + target + ". Предложим обновиться при следующем запуске.", StatusTone.Neutral);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (System.Net.WebException)
+            {
+                if (!IsDisposed && !updateCancellation.IsCancellationRequested)
+                {
+                    statusTextBox.AppendText("\r\nНе удалось проверить обновления. Доступна встроенная версия " + InstallerBackend.ModVersion + ".");
+                    banner.SetMessage("Обновления не проверены", "Нет соединения с GitHub. Можно использовать встроенную версию.", StatusTone.Warning);
+                }
+            }
+            catch (Exception error)
+            {
+                if (!IsDisposed && !updateCancellation.IsCancellationRequested)
+                {
+                    statusTextBox.AppendText("\r\n" + error.Message);
+                    banner.SetMessage("Обновление не выполнено", error.Message, StatusTone.Warning);
+                }
+            }
+            finally
+            {
+                updateCheckBusy = false;
+                if (!IsDisposed && !Disposing) SetButtonsEnabled(!busy);
+            }
+        }
+        private string InstalledVersion()
+        {
+            return lastInspection != null && lastInspection.ModInstalled && !String.IsNullOrEmpty(lastInspection.InstalledModVersion)
+                ? lastInspection.InstalledModVersion : null;
+        }
+        private bool BundleUpdateAvailable()
+        {
+            string installed = InstalledVersion();
+            if (installed == null || lastInspection.RecoveryPending || lastInspection.NeedsRepatch) return false;
+            try { return InstallerUpdates.CompareVersions(InstallerBackend.ModVersion, installed) > 0; }
+            catch (InvalidDataException) { return false; }
+        }
+        private async Task DownloadUpdate(UpdateRelease release)
+        {
+            downloading = true; SetButtonsEnabled(false);
+            string installation = installationPathTextBox.Text;
+            banner.SetMessage("Загрузка LolkaMod " + release.Version, "Можно закрыть окно, чтобы отменить загрузку.", StatusTone.Neutral);
+            try
+            {
+                string file = await Task.Run(delegate
+                {
+                    int previous = -1;
+                    return InstallerUpdates.Download(release, updateCancellation.Token, delegate(int percent)
+                    {
+                        if (percent == previous) return; previous = percent;
+                        PostToUi(delegate { banner.SetMessage("Загрузка LolkaMod " + release.Version, percent + "% · Можно закрыть окно для отмены.", StatusTone.Neutral); });
+                    });
+                });
+                if (IsDisposed || Disposing || updateCancellation.IsCancellationRequested) return;
+                InstallerUpdates.OpenDownloaded(file, release, installation);
+                Close();
+            }
+            finally { downloading = false; if (!IsDisposed && !Disposing) SetButtonsEnabled(!busy); }
         }
         private void ApplyInspection(InstallerBackend.InstallStatus status)
         {
+            lastInspection = status;
             if (status.RecoveryPending)
             {
                 clientTile.SetValue("Не проверено", false); modTile.SetValue("Не проверено", false);
-                versionTile.SetValue(InstallerBackend.ModVersion, true);
+                versionTile.SetValue("Не проверено", false);
                 banner.SetMessage("Нужно восстановить клиент", "Обнаружена незавершённая операция. Выберите «Восстановить Lolka».", StatusTone.Warning);
                 return;
             }
             clientTile.SetValue(status.ClientFound ? "Найден" + (String.IsNullOrEmpty(status.HostVersion) ? "" : " · " + status.HostVersion) : "Не подтверждён", status.ClientFound);
             modTile.SetValue(status.ModInstalled ? "Установлен" : status.NeedsRepatch ? "Нужен патч" : "Не установлен", status.ModInstalled);
-            versionTile.SetValue(String.IsNullOrEmpty(status.InstalledModVersion) ? InstallerBackend.ModVersion : status.InstalledModVersion, true);
+            versionTile.SetValue(String.IsNullOrEmpty(status.InstalledModVersion) ? "—" : status.InstalledModVersion, status.ModInstalled);
+            installButton.Text = BundleUpdateAvailable() ? "Обновить до " + InstallerBackend.ModVersion : status.ModInstalled ? "Переустановить мод" : "Установить LolkaMod";
             if (status.NeedsRepatch) banner.SetMessage("Мод нужно установить заново", "Мод сейчас не активен. Закройте Lolka и повторите установку.", StatusTone.Warning);
+            else if (BundleUpdateAvailable()) banner.SetMessage("Есть обновление LolkaMod", "Установлено " + status.InstalledModVersion + ". Доступно " + InstallerBackend.ModVersion + ".", StatusTone.Neutral);
             else if (status.ModInstalled) banner.SetMessage("LolkaMod установлен", "После обновления Lolka повторите установку мода.", StatusTone.Success);
             else banner.SetMessage("Готово к установке", "Закройте Lolka, включая значок в трее, и установите мод.", StatusTone.Neutral);
         }
         private void ClearInspection()
         {
+            lastInspection = null;
             clientTile.SetValue("Не подтверждён", false); modTile.SetValue("Не подтверждён", false);
-            versionTile.SetValue(InstallerBackend.ModVersion, true);
+            versionTile.SetValue("Не проверено", false);
         }
         // Read-only preparation for hidden rendering. No installation or network requests.
         public void PreparePreview(string installation)
@@ -371,6 +481,7 @@ namespace LolkaModInstaller
         private void FinishOperation() { busy = false; SetButtonsEnabled(true); }
         private void SetButtonsEnabled(bool enabled)
         {
+            enabled = enabled && !updateCheckBusy && !downloading;
             browseButton.Enabled = enabled; installButton.Enabled = enabled; uninstallButton.Enabled = enabled;
             repairButton.Enabled = enabled; checkButton.Enabled = enabled;
         }
