@@ -73,7 +73,22 @@ jobs:
           trap 'sudo rm -rf -- "$target"' EXIT
           sudo cp -a .runtime/platform-fixtures/deb/opt/Lolka/. "$target/"
           sudo chown -R root:root "$target"
+          sudo chmod 0777 "$target"
+          if sudo env ELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ASAR=1 "$installer" "$backend" install "$target"; then
+            echo 'Unsafe world-writable target was accepted'
+            exit 1
+          fi
+          sudo chmod 0775 "$target" "$target/resources"
+          sudo chown "root:$(id -g)" "$target"
+          if sudo env ELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ASAR=1 "$installer" "$backend" install "$target"; then
+            echo 'Target writable by an unprivileged group was accepted'
+            exit 1
+          fi
+          test "$(stat -c %a "$target")" = 775
+          sudo chown root:root "$target"
           sudo env ELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ASAR=1 "$installer" "$backend" install "$target"
+          test "$(stat -c %a "$target")" = 755
+          test "$(stat -c %a "$target/resources")" = 755
           sudo env ELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ASAR=1 "$installer" "$backend" uninstall "$target"
           cmp .runtime/platform-fixtures/deb/opt/Lolka/resources/app.asar "$target/resources/app.asar"
       - name: Verify installed Linux installer UI
