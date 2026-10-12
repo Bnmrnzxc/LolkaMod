@@ -119,10 +119,10 @@ handle('installer:open-release', async () => {
 
 app.on('before-quit', event => { if (busy) event.preventDefault(); else updater.stop(); });
 app.on('window-all-closed', () => { if (!busy) app.quit(); });
-await app.whenReady();
+app.whenReady().then(async () => {
 for (const candidate of defaultPaths) if (await fs.access(candidate).then(() => true, () => false)) { installation = candidate; break; }
 checking = updater.check().then(result => { if (result.state === 'available') release = { version: result.latest, url: result.url }; }).catch(() => {});
-window = new BrowserWindow({ width: 800, height: 660, minWidth: 720, minHeight: 620, backgroundColor: '#202122', title: 'LolkaMod', icon: path.join(here, 'logo.png'),
+window = new BrowserWindow({ show: !process.argv.includes('--installer-qa-hidden'), width: 800, height: 660, minWidth: 720, minHeight: 620, backgroundColor: '#202122', title: 'LolkaMod', icon: path.join(here, 'logo.png'),
   webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true } });
 window.setMenuBarVisibility(false);
 window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -130,3 +130,8 @@ window.webContents.on('will-navigate', (event, url) => { if (url !== page) event
 window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 window.on('close', event => { if (busy) event.preventDefault(); });
 await window.loadFile(path.join(here, 'renderer.html'));
+}).catch(error => {
+  console.error('Installer startup failed:', error);
+  if (!process.argv.includes('--installer-qa-hidden')) dialog.showErrorBox('LolkaMod', friendly(error));
+  app.exit(1);
+});

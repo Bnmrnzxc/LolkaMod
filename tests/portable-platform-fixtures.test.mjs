@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import test from 'node:test';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createPackage } from '@electron/asar';
-import { inspectInstallation } from '../scripts/portable-platform.mjs';
+import { applyOperation, bundleDigest, inspectInstallation, macStateDirectory } from '../scripts/portable-platform.mjs';
 import { install, repair, uninstall } from '../scripts/install.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const run = promisify(execFile);
 const hostPackage = {
   name: 'Lolka', homepage: 'https://lolka.app', version: '1.0.100',
   main: 'dist-js/main.js',
@@ -104,4 +107,52 @@ test('portable installer handles Linux resources layout and restores exact ASAR 
 
 test('portable installer handles macOS app bundle layout and repair across all fixture hosts', async () => {
   await exercise('mac');
+});
+
+test('macOS signing failure restores the complete isolated ditto copy', {
+  skip: process.platform !== 'darwin' ? 'Mac native rollback requires the macOS CI runner' : false,
+}, async () => {
+  const source = await fixture('mac');
+  const framework = path.join(source.root, 'Contents', 'Frameworks', 'Electron Framework.framework');
+  const infoPlist = path.join(source.root, 'Contents', 'Info.plist');
+  const copiedRoot = path.join(source.temp, 'rollback-copy', 'Lolka.app');
+  const stateDirectory = macStateDirectory(copiedRoot);
+  try {
+    await mkdir(framework, { recursive: true });
+    await writeFile(path.join(framework, 'Electron Framework'), Buffer.concat([
+      Buffer.from('synthetic-electron-prefix'),
+      Buffer.from('dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'),
+      Buffer.from([1, 6, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30]),
+      Buffer.from('synthetic-electron-suffix'),
+    ]));
+    await writeFile(infoPlist, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>app.lolka.ci.rollback</string>
+  <key>ElectronAsarIntegrity</key><dict>
+    <key>Resources/app.asar</key><dict><key>algorithm</key><string>SHA256</string><key>hash</key><string>0000000000000000000000000000000000000000000000000000000000000000</string></dict>
+  </dict>
+</dict></plist>
+`);
+    await mkdir(path.dirname(copiedRoot), { recursive: true });
+    await run('/usr/bin/ditto', ['--rsrc', '--extattr', source.root, copiedRoot]);
+    await run('/usr/bin/plutil', ['-remove', 'ElectronAsarIntegrity', path.join(copiedRoot, 'Contents', 'Info.plist')]);
+    const beforeDigest = await bundleDigest(copiedRoot);
+    const before = await inspectInstallation(copiedRoot);
+    assert.equal(before.installed, false);
+
+    await assert.rejects(applyOperation('install', copiedRoot, {
+      payloadDirectory: source.payloadDirectory,
+      testMode: true,
+      userData: path.join(source.temp, 'rollback-user-data'),
+    }), /plutil|ElectronAsarIntegrity/i, 'The intentionally missing ElectronAsarIntegrity must fail after core mutation');
+
+    assert.equal(await bundleDigest(copiedRoot), beforeDigest, 'Failed signing must restore every file and metadata in the copied bundle');
+    const after = await inspectInstallation(copiedRoot);
+    assert.equal(after.installed, false, 'Failed signing must leave the core uninstalled');
+    assert.equal(after.originalHash, before.originalHash);
+  } finally {
+    await rm(stateDirectory, { recursive: true, force: true });
+    await rm(source.temp, { recursive: true, force: true });
+  }
 });

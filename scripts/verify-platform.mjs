@@ -87,6 +87,7 @@ async function waitForRuntimeReady(cdp, timeoutMs = 60_000) {
       origin:location.origin,
       hostBridge:!!api && typeof api.getAppVersion==='function' && typeof api.desktopCapturer?.getSources==='function' && typeof api.desktopCapturer?.setSelectedSource==='function',
       modBridge:!!native && diagnostics?.testMode===true,
+      sourceAdapter:diagnostics?.sourceAdapter??null,
       modReady:mod?.ready===true,
       modVersion:mod?.version??null,
       diagnosticsTestMode:diagnostics?.testMode===true,
@@ -153,10 +154,11 @@ async function runRuntime(root, userData, report) {
     assert.equal(state.structuralPatches.settings, true, 'Host settings capability is missing');
     assert.equal(state.structuralPatches.controls, true, 'Stream controls capability is missing');
     assert.ok(state.hostVersion, 'Original host getAppVersion did not return a version');
-    const resources = process.platform === 'darwin' ? path.join(root, 'Contents', 'Resources') : path.join(root, 'resources');
-    const adapter = JSON.parse(await fs.readFile(path.join(resources, 'lolkamod', 'compatibility.json'), 'utf8'));
+    const adapter = state.sourceAdapter;
+    assert.ok(adapter && typeof adapter === 'object', 'Current renderer did not report its source adapter diagnostics');
     assert.equal(adapter.status, 'transformed', 'Current vendor entry was not structurally transformed');
-    assert.ok(Array.isArray(adapter.patches) && adapter.patches.length > 0, 'Source adapter reported no active structural patches');
+    assert.match(adapter.hash ?? '', /^[a-f0-9]{64}$/, 'Source adapter did not report the current entry hash');
+    assert.ok(Array.isArray(adapter.patches) && adapter.patches.length > 0, 'Current renderer reported no active structural patches');
     report.runtime = {
       status: 'PASS', executable, pageUrl: page.url, hostVersion: state.hostVersion,
       modVersion: state.modVersion, hostDesktopCapturerBridge: true, modNativeBridge: true,

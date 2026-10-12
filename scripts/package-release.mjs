@@ -36,7 +36,7 @@ try {
   for(const file of ['src','Installer','DesktopInstaller','electron-builder.config.cjs','assets','tests','scripts','.github','.gitignore','.gitattributes','README.md','LICENSE','THIRD_PARTY_NOTICES.md','docs','package.json','package-lock.json','tsconfig.json']) {
     if(file==='scripts') {
       await fs.mkdir(path.join(source,file),{recursive:true});
-      for(const name of ['build.mjs','build-installer.mjs','build-brand-icons.ps1','build-portable-installer.mjs','after-pack-portable.cjs','portable-cli.mjs','portable-platform.mjs','fetch-platform-fixtures.mjs','verify-platform.mjs','cdp.mjs','package-release.mjs','fetch-frontend.mjs','install.mjs','restore-desktop.ps1']) await copy(`scripts/${name}`,path.join(source,file,name));
+      for(const name of ['build.mjs','build-installer.mjs','build-brand-icons.ps1','build-portable-installer.mjs','after-pack-portable.cjs','portable-cli.mjs','portable-platform.mjs','fetch-platform-fixtures.mjs','verify-platform.mjs','verify-installer-ui.mjs','cdp.mjs','package-release.mjs','fetch-frontend.mjs','install.mjs','restore-desktop.ps1']) await copy(`scripts/${name}`,path.join(source,file,name));
     } else await copy(file,path.join(source,file));
   }
   const artifacts=[`LolkaMod-${pkg.version}-Windows.zip`,`LolkaMod-${pkg.version}-Source.zip`];

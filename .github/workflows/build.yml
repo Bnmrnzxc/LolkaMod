@@ -50,6 +50,29 @@ jobs:
       - name: Verify RPM client lifecycle and runtime
         run: xvfb-run -a node scripts/verify-platform.mjs --root .runtime/platform-fixtures/rpm/opt/Lolka --report .runtime/evidence/linux-rpm.json --runtime
       - run: npm run build:portable -- --platform linux
+      - name: Check native Linux package metadata
+        run: |
+          dpkg-deb --info release/portable/*.deb
+          rpm -qp --info release/portable/*.rpm
+          mkdir .runtime/rpm-installer
+          bsdtar -xf release/portable/*.rpm -C .runtime/rpm-installer
+          cmp 'release/portable/linux-unpacked/resources/backend.mjs' '.runtime/rpm-installer/opt/LolkaMod Installer/resources/backend.mjs'
+          cmp 'release/portable/linux-unpacked/resources/dist/main.cjs' '.runtime/rpm-installer/opt/LolkaMod Installer/resources/dist/main.cjs'
+      - name: Verify installed DEB and administrator helper
+        run: |
+          sudo apt-get install -y ./release/portable/*.deb
+          installer='/opt/LolkaMod Installer/lolkamod-installer'
+          backend='/opt/LolkaMod Installer/resources/backend.mjs'
+          target="$(sudo mktemp -d /opt/lolkamod-ci-XXXXXX)"
+          [[ "$target" == /opt/lolkamod-ci-* ]]
+          trap 'sudo rm -rf -- "$target"' EXIT
+          sudo cp -a .runtime/platform-fixtures/deb/opt/Lolka/. "$target/"
+          sudo chown -R root:root "$target"
+          sudo env ELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ASAR=1 "$installer" "$backend" install "$target"
+          sudo env ELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ASAR=1 "$installer" "$backend" uninstall "$target"
+          cmp .runtime/platform-fixtures/deb/opt/Lolka/resources/app.asar "$target/resources/app.asar"
+      - name: Verify installed Linux installer UI
+        run: xvfb-run -a node scripts/verify-installer-ui.mjs --executable '/opt/LolkaMod Installer/lolkamod-installer' --root .runtime/platform-fixtures/deb/opt/Lolka --report .runtime/evidence/linux-installer-ui.json --screenshot .runtime/evidence/linux-installer-ui.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -58,6 +81,7 @@ jobs:
             release/portable/*.deb
             release/portable/*.rpm
             .runtime/evidence/*.json
+            .runtime/evidence/*.png
   macos:
     runs-on: macos-15
     steps:
@@ -77,6 +101,8 @@ jobs:
       - run: npm run build:portable -- --platform mac
       - name: Verify installer signature
         run: codesign --verify --deep --strict 'release/portable/mac-arm64/LolkaMod Installer.app'
+      - name: Verify packaged Mac installer UI
+        run: node scripts/verify-installer-ui.mjs --executable "$PWD/release/portable/mac-arm64/LolkaMod Installer.app/Contents/MacOS/LolkaMod Installer" --root .runtime/platform-fixtures/mac/Lolka.app --report .runtime/evidence/macos-installer-ui.json --screenshot .runtime/evidence/macos-installer-ui.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -85,3 +111,4 @@ jobs:
             release/portable/*.dmg
             release/portable/*.zip
             .runtime/evidence/*.json
+            .runtime/evidence/*.png

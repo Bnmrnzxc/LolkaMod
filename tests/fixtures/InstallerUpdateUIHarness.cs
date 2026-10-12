@@ -109,6 +109,7 @@ namespace LolkaModInstaller
 
         private static void StartPolling(Action tick)
         {
+            StopPolling();
             pollTimer = new System.Windows.Forms.Timer();
             pollTimer.Interval = 10;
             pollTimer.Tick += delegate
