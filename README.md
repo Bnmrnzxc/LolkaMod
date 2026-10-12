@@ -2,7 +2,16 @@
 
 Мод для **Lolka**: стримы до 1440p и 60 FPS, темы и дополнительные настройки.
 
-**[Windows](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller.exe)** · **[macOS · Apple Silicon](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller-arm64.dmg)** · **Linux: [DEB](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller-amd64.deb) / [RPM](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller-x86_64.rpm)**
+## Скачать
+
+| Ваша система | Установщик |
+|---|---|
+| **Windows · x64** | **[Скачать для Windows (.exe)](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller.exe)** |
+| **macOS · Mac с процессором Apple M** | **[Скачать для macOS (.dmg)](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller-arm64.dmg)** |
+| **Linux · Ubuntu, Debian, Mint · x64** | **[Скачать для Linux (.deb)](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller-amd64.deb)** |
+| **Linux · Fedora / RPM · x64** | **[Скачать для Linux (.rpm)](https://github.com/Bnmrnzxc/LolkaMod/releases/latest/download/LolkaModInstaller-x86_64.rpm)** |
+
+Для Mac требуется macOS 13 или новее. Версии для Intel Mac пока нет.
 
 ## Возможности
 
