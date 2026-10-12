@@ -64,6 +64,8 @@ async function writeJSON(file, value) {
   const handle = await fs.open(temporary, 'wx', 0o600);
   try { await handle.writeFile(JSON.stringify(value, null, 2)); await handle.sync(); } finally { await handle.close(); }
   await fs.rename(temporary, file);
+  const directory = await fs.open(path.dirname(file), 'r');
+  try { await directory.sync(); } finally { await directory.close(); }
 }
 
 async function checkStateDirectory(directory) {
