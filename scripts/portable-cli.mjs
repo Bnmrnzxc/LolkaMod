@@ -16,7 +16,7 @@ try {
     for (const file of protectedFiles) {
       for (let current = path.resolve(file); ; current = path.dirname(current)) {
         const stat = await fs.lstat(current);
-        if (stat.isSymbolicLink() || stat.uid !== 0 || stat.mode & 0o022) throw new Error('Privileged installer files must be root-owned and not writable by other users');
+        if (stat.isSymbolicLink() || stat.uid !== 0 || stat.mode & 0o022) throw new Error(`Privileged installer files must be root-owned and not writable by other users: ${current}`);
         if (path.dirname(current) === current) break;
       }
     }

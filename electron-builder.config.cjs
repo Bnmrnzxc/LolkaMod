@@ -49,6 +49,12 @@ module.exports = {
     },
     icon: 'assets/branding/logo.png',
   },
-  deb: { packageName: 'lolkamod-installer' },
-  rpm: { packageName: 'lolkamod-installer' },
+  deb: {
+    packageName: 'lolkamod-installer',
+    depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0', 'pkexec'],
+  },
+  rpm: {
+    packageName: 'lolkamod-installer',
+    depends: ['gtk3', 'libnotify', 'nss', 'libXScrnSaver', '(libXtst or libXtst6)', 'xdg-utils', 'at-spi2-core', '(libuuid or libuuid1)', '/usr/bin/pkexec'],
+  },
 };

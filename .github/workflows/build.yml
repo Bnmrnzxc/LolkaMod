@@ -60,9 +60,14 @@ jobs:
           cmp 'release/portable/linux-unpacked/resources/dist/main.cjs' '.runtime/rpm-installer/opt/LolkaMod Installer/resources/dist/main.cjs'
       - name: Verify installed DEB and administrator helper
         run: |
+          # Hosted runners make /opt writable for tool provisioning. The actual
+          # root helper correctly refuses that boundary; use normal system perms.
+          sudo chown root:root /opt
+          sudo chmod 0755 /opt
           sudo apt-get install -y ./release/portable/*.deb
           installer='/opt/LolkaMod Installer/lolkamod-installer'
           backend='/opt/LolkaMod Installer/resources/backend.mjs'
+          namei -l "$backend"
           target="$(sudo mktemp -d /opt/lolkamod-ci-XXXXXX)"
           [[ "$target" == /opt/lolkamod-ci-* ]]
           trap 'sudo rm -rf -- "$target"' EXIT
